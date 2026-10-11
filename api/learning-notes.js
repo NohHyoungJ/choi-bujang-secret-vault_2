@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
 import config from '../aleph.config.json' with { type: 'json' };
 import { createLoginVerifier } from '../src/verify-login.mjs';
+import { ACCESS_COOKIE, readCookie, sameOrigin } from '../src/session-cookies.mjs';
 
 function sendError(response, status, code) {
   return response.status(status).json({ error: code });
@@ -18,7 +19,7 @@ function getVerifier() {
 export default async function handler(request, response) {
   response.setHeader('Cache-Control', 'no-store, max-age=0');
   response.setHeader('X-Content-Type-Options', 'nosniff');
-  response.setHeader('Vary', 'Authorization');
+  response.setHeader('Vary', 'Authorization, Cookie');
 
   const path = new URL(request.url ?? '/api/learning-notes', 'https://local.invalid').pathname;
   const match = /^\/api\/learning-notes(?:\/([^/]+))?\/?$/.exec(path);
@@ -37,7 +38,12 @@ export default async function handler(request, response) {
     response.setHeader('WWW-Authenticate', 'Bearer');
     return sendError(response, 401, 'LOGIN_REQUIRED');
   };
-  const authorization = request.headers.authorization;
+  const cookieToken = readCookie(request, ACCESS_COOKIE);
+  const usesCookie = request.headers.authorization === undefined && Boolean(cookieToken);
+  if (usesCookie && request.method !== 'GET' && !sameOrigin(request)) {
+    return sendError(response, 403, 'ORIGIN_REQUIRED');
+  }
+  const authorization = request.headers.authorization ?? (cookieToken ? `Bearer ${cookieToken}` : undefined);
   if (typeof authorization !== 'string' || !authorization) return denyLogin();
 
   const supabaseUrl = process.env.SUPABASE_URL;

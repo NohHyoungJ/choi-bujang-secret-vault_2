@@ -83,12 +83,11 @@
       list.replaceChildren(item);
     }
 
-    // 로그인 토큰은 Authorization 헤더로만 보냅니다. userId·role 같은 값은 보내지 않으며,
-    // 서버가 토큰을 직접 검사해서 사용자를 정합니다. 이전 요청의 늦은 응답은 버립니다.
+    // 로그인·토큰 갱신은 서버가 처리하며 브라우저는 보안 쿠키를 자동 전달합니다.
     let loadSequence = 0;
-    async function loadNotes(accessToken) {
+    async function loadNotes(signedIn) {
       const sequence = ++loadSequence;
-      if (!accessToken) {
+      if (!signedIn) {
         showListMessage('로그인하면 자료를 볼 수 있습니다.');
         return;
       }
@@ -96,7 +95,7 @@
       try {
         const response = await fetch('/api/learning-notes', {
           cache: 'no-store',
-          headers: { Authorization: `Bearer ${accessToken}` },
+          credentials: 'same-origin',
         });
         if (sequence !== loadSequence) return;
         if (response.status === 401) throw new Error('로그인이 확인되지 않아 자료를 보여 줄 수 없습니다.');
@@ -128,11 +127,6 @@
       }
     }
 
-    // Supabase Auth 이메일·비밀번호 로그인. Project URL과 publishable key는 공개용 값입니다.
-    // 비밀번호와 토큰은 공식 SDK가 처리하며, 이 코드에서 직접 만들거나 저장하지 않습니다.
-    const SUPABASE_URL = 'https://eqfkncijzfsatalbhmij.supabase.co';
-    const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_cPFpwwhi0Ni6ZD3Y0dSJ_A_C6dwwJhE';
-
     const form = document.querySelector('#login-form');
     const emailInput = document.querySelector('#login-email');
     const passwordInput = document.querySelector('#login-password');
@@ -151,26 +145,10 @@
       const signedIn = Boolean(session);
       form.hidden = signedIn;
       signedInBox.hidden = !signedIn;
-      signedInLabel.textContent = signedIn ? `${session.user?.email ?? '사용자'} 계정으로 로그인했습니다.` : '';
+      signedInLabel.textContent = signedIn ? '로그인했습니다.' : '';
     }
 
-    function explainError(error) {
-      const reasons = {
-        invalid_credentials: '이메일 또는 비밀번호가 맞지 않습니다.',
-        email_not_confirmed: '이메일 인증이 끝나지 않았습니다. 받은 편지함의 확인 메일을 먼저 눌러 주세요.',
-        over_request_rate_limit: '요청이 너무 많습니다. 잠시 뒤 다시 시도해 주세요.',
-        validation_failed: '이메일 형식이나 입력값이 올바르지 않습니다.',
-        email_provider_disabled: '이메일 로그인이 Supabase에서 꺼져 있습니다.',
-        user_banned: '이 계정은 사용할 수 없는 상태입니다.',
-      };
-      const original = error?.message ? String(error.message) : '알 수 없는 오류';
-      const reason = reasons[error?.code]
-        ?? (error?.status === 429 ? reasons.over_request_rate_limit : null)
-        ?? (!error?.status ? '서버에 연결하지 못했습니다. 네트워크를 확인해 주세요.' : '로그인에 실패했습니다.');
-      return `${reason} (${original})`;
-    }
 
-    let supabase;
     const editor = document.querySelector('#editor');
     const noteForm = document.querySelector('#note-form');
     const noteId = document.querySelector('#note-id');
@@ -179,11 +157,11 @@
     const noteMessage = document.querySelector('#note-message');
     let sessionUser;
     async function noteRequest(method, id, body) {
-      const { data, error } = await supabase.auth.getSession();
-      if (error || !data.session) throw new Error('로그인이 필요합니다.');
+      const session = await sessionRequest('GET');
+      if (!session.signedIn) { updateSession(false); throw new Error('로그인이 필요합니다.'); }
       const response = await fetch(`/api/learning-notes${id ? `/${encodeURIComponent(id)}` : ''}`, {
         method, cache: 'no-store',
-        headers: { Authorization: `Bearer ${data.session.access_token}`, 'Content-Type': 'application/json' },
+        credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
       const result = await response.json();
@@ -191,8 +169,7 @@
       return result;
     }
     async function refreshNotes() {
-      const { data } = await supabase.auth.getSession();
-      await loadNotes(data.session?.access_token);
+      await syncSession();
     }
     async function openNote(id) {
       const user = sessionUser;
@@ -228,80 +205,63 @@
       } catch (error) { noteMessage.textContent = error.message; }
       finally { button.disabled = false; }
     };
-    try {
-      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.117.2');
-      supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-    } catch {
-      form.hidden = true;
-      showListMessage('로그인할 수 없어 자료를 볼 수 없습니다.');
-      showMessage('로그인 라이브러리를 불러오지 못했습니다. 네트워크를 확인하고 새로고침해 주세요.', 'error');
-    }
-
-    if (supabase) {
-      supabase.auth.onAuthStateChange((_event, session) => {
-        if (sessionUser !== session?.user?.id) {
-          noteForm.reset(); document.querySelector('#lookup-form').reset(); noteMessage.textContent = '';
-        }
-        sessionUser = session?.user?.id;
-        editor.hidden = !session;
-        render(session);
-        loadNotes(session?.access_token);
+    async function sessionRequest(method, body) {
+      const response = await fetch('/api/session', {
+        method, credentials: 'same-origin', cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', 'X-Vault-Request': '1' },
+        ...(body ? { body: JSON.stringify(body) } : {}),
       });
-
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        render(data.session);
-        loadNotes(data.session?.access_token);
-      } catch (error) {
-        render(null);
-        loadNotes(null);
-        showMessage(explainError(error), 'error');
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? '로그인에 실패했습니다.');
+      return result;
+    }
+    function updateSession(signedIn, userId) {
+      // Invalidate pending responses when the local session changes.
+      ++loadSequence;
+      const nextUser = signedIn ? userId : null;
+      if (sessionUser !== nextUser) {
+        noteForm.reset(); document.querySelector('#lookup-form').reset(); noteMessage.textContent = '';
       }
-
-      form.addEventListener('submit', async event => {
-        event.preventDefault();
-        const email = emailInput.value.trim();
-        const password = passwordInput.value;
-        if (!email || !password) {
-          showMessage('이메일과 비밀번호를 모두 입력해 주세요.', 'error');
-          return;
-        }
-        submitButton.disabled = true;
-        showMessage('로그인하는 중입니다.');
-        try {
-          const { error } = await supabase.auth.signInWithPassword({ email, password });
-          if (error) {
-            showMessage(explainError(error), 'error');
-            return;
-          }
-          passwordInput.value = '';
-          showMessage('로그인했습니다.', 'ok');
-        } catch (error) {
-          showMessage(explainError(error), 'error');
-        } finally {
-          submitButton.disabled = false;
-        }
-      });
-
-      logoutButton.addEventListener('click', async () => {
-        logoutButton.disabled = true;
-        try {
-          const { error } = await supabase.auth.signOut();
-          if (error) {
-            showMessage(`로그아웃에 실패했습니다. (${error.message})`, 'error');
-            return;
-          }
-          emailInput.value = '';
-          passwordInput.value = '';
-          showMessage('로그아웃했습니다.', 'ok');
-        } catch (error) {
-          showMessage(`로그아웃에 실패했습니다. (${error?.message ?? '알 수 없는 오류'})`, 'error');
-        } finally {
-          logoutButton.disabled = false;
-        }
-      });
+      sessionUser = nextUser;
+      editor.hidden = !signedIn;
+      render(signedIn);
+      if (!signedIn) showListMessage('로그인하면 자료를 볼 수 있습니다.');
     }
+    let syncing;
+    async function syncSession() {
+      if (syncing) return syncing;
+      syncing = (async () => {
+        const session = await sessionRequest('GET');
+        updateSession(session.signedIn, session.userId);
+        await loadNotes(session.signedIn);
+      })();
+      try { await syncing; } finally { syncing = null; }
+    }
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      submitButton.disabled = true;
+      showMessage('로그인하는 중입니다.');
+      try {
+        await sessionRequest('POST', { email: emailInput.value.trim(), password: passwordInput.value });
+        passwordInput.value = '';
+        showMessage('로그인했습니다.', 'ok');
+        await syncSession();
+      } catch (error) { showMessage(error.message, 'error'); }
+      finally { passwordInput.value = ''; submitButton.disabled = false; }
+    });
+    logoutButton.addEventListener('click', async () => {
+      logoutButton.disabled = true;
+      try {
+        await sessionRequest('DELETE');
+        updateSession(false);
+        emailInput.value = ''; passwordInput.value = '';
+        showMessage('로그아웃했습니다.', 'ok');
+      } catch (error) { showMessage(error.message, 'error'); }
+      finally { logoutButton.disabled = false; }
+    });
+    window.addEventListener('focus', () => syncSession().catch(error => showMessage(error.message, 'error')));
+    try { await syncSession(); }
+    catch (error) { updateSession(false); showMessage(error.message, 'error'); }
   </script>
 </body>
 </html>

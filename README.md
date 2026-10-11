@@ -4,7 +4,7 @@
 
 ## 현재 기능
 
-- Supabase 공식 SDK 이메일·비밀번호 로그인·로그아웃과 실패 이유 표시.
+- Supabase 공식 SDK 이메일·비밀번호 로그인·로그아웃은 서버의 /api/session에서 처리하고 실패 이유를 화면에 표시합니다. 브라우저 코드에는 Supabase 공개 키·SDK·JWT가 없으며 HttpOnly·Secure·SameSite=Strict 쿠키로 서버에 인증합니다.
 - 자료 API는 기존 `src/verify-login.mjs`로 토큰을 검증하며 브라우저의 userId·role을 신뢰하지 않습니다.
 - 목록 GET은 검증된 사용자의 메모 배열을 반환합니다. 새 메모의 owner_id는 서버가 확인한 사용자 ID입니다.
 - POST /api/learning-notes: {id?,title,body}, id는 UUID이며 생략하면 서버가 생성해 {id}를 반환합니다.

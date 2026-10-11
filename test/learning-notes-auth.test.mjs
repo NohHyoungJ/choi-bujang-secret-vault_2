@@ -50,11 +50,11 @@ test('자료 API는 검증된 토큰만 허용하고 브라우저의 userId·rol
   };
   try {
     const { default: handler } = await import('../api/learning-notes.js');
-    const invoke = async (authorization, method = 'GET', id, input) => {
+    const invoke = async (authorization, method = 'GET', id, input, extraHeaders = {}) => {
       let status;
       let body;
       const headers = {};
-      await handler({ method, url: `/api/learning-notes${id ? `/${id}` : ''}?owner_id=untrusted`, headers: { authorization, userId: 'untrusted', role: 'admin' },
+      await handler({ method, url: `/api/learning-notes${id ? `/${id}` : ''}?owner_id=untrusted`, headers: { authorization, userId: 'untrusted', role: 'admin', ...extraHeaders },
         query: { userId: 'untrusted', role: 'admin' }, body: input ?? { userId: 'untrusted', role: 'admin' } }, {
         setHeader: (name, value) => { headers[name] = value; },
         status: code => { status = code; return { json: value => { body = value; } }; },
@@ -98,7 +98,13 @@ test('자료 API는 검증된 토큰만 허용하고 브라우저의 userId·rol
     assert.match(created.body.id, /^[a-f0-9-]{36}$/i);
     const id = created.body.id;
     assert.equal(rows.get(id).owner_id, '00000000-0000-4000-8000-000000000001');
-    assert.deepEqual((await invoke(auth, 'GET', id)).body, { id, title: 'Synthetic test', body: 'Synthetic body' });
+    const cookieHeaders = { cookie: `__Host-vault-access=${valid}`, origin: new URL(config.publicAppUrl).origin };
+    assert.equal((await invoke(undefined, 'GET', id, undefined, cookieHeaders)).status, 200);
+    assert.equal((await invoke(undefined, 'PUT', id, { title: 'Cookie update', body: 'Synthetic' }, cookieHeaders)).status, 200);
+    const beforeCsrf = databaseReads;
+    assert.equal((await invoke(undefined, 'DELETE', id, undefined, { ...cookieHeaders, origin: 'https://cross-site.invalid' })).status, 403);
+    assert.equal(databaseReads, beforeCsrf);
+    assert.deepEqual((await invoke(auth, 'GET', id)).body, { id, title: 'Cookie update', body: 'Synthetic' });
     assert.equal((await invoke(auth)).body.length, 1);
     assert.equal((await invoke(auth, 'PUT', id, { title: 'Updated', body: 'Changed' })).status, 200);
     // B must not access A's note, even with its exact UUID.

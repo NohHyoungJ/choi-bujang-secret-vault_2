@@ -10,6 +10,8 @@ const PATTERN_NAMES = new Set([
   '요청 인자의 SQL 주입 형태',
   '요청 인자의 스크립트 태그 삽입 형태',
   '상위 디렉터리 이동을 반복하는 경로 탐색 형태',
+  '요청 인자의 명령 구분자 주입 형태',
+  '주입 관련 단발성 의심 신호',
 ]);
 
 // Adapter inputs must come from the trusted engine, never alert.data.srcuser or a browser.

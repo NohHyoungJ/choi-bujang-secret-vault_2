@@ -60,6 +60,9 @@ export default async function handler(request, response) {
   if (['POST', 'PUT'].includes(request.method)) {
     try { input = typeof request.body === 'string' ? JSON.parse(request.body) : request.body; }
     catch { return sendError(response, 400, 'INVALID_NOTE'); }
+    if (request.method === 'PUT' && input && Object.hasOwn(input, 'owner_id')) {
+      return sendError(response, 400, 'OWNER_CHANGE_NOT_ALLOWED');
+    }
     if (!input || typeof input.title !== 'string' || !input.title.trim()
         || typeof input.body !== 'string' || !input.body.trim()
         || input.title.length > 200 || input.body.length > 20000) {
@@ -92,13 +95,15 @@ export default async function handler(request, response) {
       if (error) return sendError(response, error.code === '23505' ? 409 : 502, 'NOTE_CREATE_FAILED');
       return response.status(201).json({ id: newId });
     }
-    // Stage 3: individual operations intentionally do not filter owner_id yet.
+    // Filter by verified identity in the same DB operation to avoid a check/write race.
     let query;
     if (!id) query = table().select('note_id,title,content').eq('owner_id', login.userId).order('created_at').order('note_id');
-    else if (request.method === 'GET') query = table().select('note_id,title,content').eq('note_id', id).maybeSingle();
-    else if (request.method === 'PUT') query = table().update({ title: input.title, content: input.body })
-      .eq('note_id', id).select('note_id,title,content').maybeSingle();
-    else query = table().delete().eq('note_id', id).select('note_id').maybeSingle();
+    else if (request.method === 'GET') query = table().select('note_id,title,content')
+      .eq('note_id', id).eq('owner_id', login.userId).maybeSingle();
+    else if (request.method === 'PUT') query = table().update({ title: input.title,
+      content: input.body, owner_id: login.userId })
+      .eq('note_id', id).eq('owner_id', login.userId).select('note_id,title,content').maybeSingle();
+    else query = table().delete().eq('note_id', id).eq('owner_id', login.userId).select('note_id').maybeSingle();
     const { data, error } = await query;
     if (error) return sendError(response, 502, 'LEARNING_NOTES_UNAVAILABLE');
     if (id && !data) return sendError(response, 404, 'NOTE_NOT_FOUND');

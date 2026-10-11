@@ -27,14 +27,20 @@ test('자료 API는 검증된 토큰만 허용하고 브라우저의 userId·rol
       const headers = new Headers(init.headers);
       if (method === 'POST') {
         const row = JSON.parse(init.body);
-        assert.equal(row.owner_id, '00000000-0000-4000-8000-000000000001');
         if (rows.has(row.note_id)) return Response.json({ code: '23505' }, { status: 409 });
         rows.set(row.note_id, row);
         return new Response(null, { status: 201 });
       }
-      const found = rows.get(id);
-      if (method === 'PATCH' && found) Object.assign(found, JSON.parse(init.body));
-      if (method === 'DELETE') rows.delete(id);
+      const candidate = rows.get(id);
+      const owner = url.searchParams.get('owner_id');
+      assert.ok(owner, 'All reads, updates and deletes must have a server-side owner filter');
+      const found = candidate && `eq.${candidate.owner_id}` === owner ? candidate : undefined;
+      if (method === 'PATCH' && found) {
+        const patch = JSON.parse(init.body);
+        assert.equal(`eq.${patch.owner_id}`, owner, 'The new row must retain the verified owner');
+        Object.assign(found, patch);
+      }
+      if (method === 'DELETE' && found) rows.delete(id);
       let data = id ? (found ? [found] : []) : [...rows.values()].filter(row =>
         `eq.${row.owner_id}` === url.searchParams.get('owner_id'));
       if (headers.get('accept')?.includes('vnd.pgrst.object')) data = data[0] ?? null;
@@ -48,7 +54,7 @@ test('자료 API는 검증된 토큰만 허용하고 브라우저의 userId·rol
       let status;
       let body;
       const headers = {};
-      await handler({ method, url: `/api/learning-notes${id ? `/${id}` : ''}`, headers: { authorization, userId: 'untrusted', role: 'admin' },
+      await handler({ method, url: `/api/learning-notes${id ? `/${id}` : ''}?owner_id=untrusted`, headers: { authorization, userId: 'untrusted', role: 'admin' },
         query: { userId: 'untrusted', role: 'admin' }, body: input ?? { userId: 'untrusted', role: 'admin' } }, {
         setHeader: (name, value) => { headers[name] = value; },
         status: code => { status = code; return { json: value => { body = value; } }; },
@@ -91,15 +97,43 @@ test('자료 API는 검증된 토큰만 허용하고 브라우저의 userId·rol
     assert.equal(created.status, 201);
     assert.match(created.body.id, /^[a-f0-9-]{36}$/i);
     const id = created.body.id;
+    assert.equal(rows.get(id).owner_id, '00000000-0000-4000-8000-000000000001');
     assert.deepEqual((await invoke(auth, 'GET', id)).body, { id, title: 'Synthetic test', body: 'Synthetic body' });
     assert.equal((await invoke(auth)).body.length, 1);
     assert.equal((await invoke(auth, 'PUT', id, { title: 'Updated', body: 'Changed' })).status, 200);
-    // This stage deliberately permits B to update A's note by UUID.
+    // B must not access A's note, even with its exact UUID.
     const b = await new SignJWT({ role: 'authenticated' }).setProtectedHeader({ alg: 'ES256', kid: 'auth-test' })
       .setIssuer(config.identityProvider.issuer).setAudience(config.identityProvider.audience)
       .setSubject('00000000-0000-4000-8000-000000000002').setIssuedAt().setExpirationTime('5m').sign(privateKey);
     assert.deepEqual((await invoke(`Bearer ${b}`)).body, []);
-    assert.equal((await invoke(`Bearer ${b}`, 'PUT', id, { title: 'B edit', body: 'Synthetic' })).status, 200);
+    const bAuth = `Bearer ${b}`;
+    for (const method of ['GET', 'PUT', 'DELETE']) {
+      const denied = await invoke(bAuth, method, id, { title: 'B edit', body: 'Synthetic' });
+      assert.equal(denied.status, 404);
+      assert.deepEqual(denied.body, { error: 'NOTE_NOT_FOUND' });
+    }
+    assert.equal((await invoke(auth, 'GET', id)).body.title, 'Updated');
+    const beforeChange = databaseReads;
+    assert.equal((await invoke(auth, 'PUT', id, { title: 'Transfer', body: 'Synthetic',
+      owner_id: '00000000-0000-4000-8000-000000000002' })).status, 400);
+    assert.equal(databaseReads, beforeChange, 'Owner changes are rejected before DB access');
+    assert.equal(rows.get(id).owner_id, '00000000-0000-4000-8000-000000000001');
+    const bCreated = await invoke(bAuth, 'POST', undefined, { title: 'B note', body: 'Synthetic',
+      owner_id: '00000000-0000-4000-8000-000000000001' });
+    assert.equal(bCreated.status, 201);
+    const bId = bCreated.body.id;
+    assert.equal(rows.get(bId).owner_id, '00000000-0000-4000-8000-000000000002');
+    assert.deepEqual((await invoke(bAuth, 'GET', bId)).body, { id: bId, title: 'B note', body: 'Synthetic' });
+    for (const method of ['GET', 'PUT', 'DELETE']) {
+      assert.equal((await invoke(auth, method, bId, { title: 'A edit', body: 'Synthetic' })).status, 404);
+    }
+    assert.equal((await invoke(bAuth)).body.length, 1);
+    assert.equal((await invoke(auth)).body.length, 1);
+    assert.equal((await invoke(bAuth, 'PUT', bId, { title: 'B updated', body: 'Changed' })).status, 200);
+    assert.equal((await invoke(bAuth, 'PUT', bId, { title: 'Transfer', body: 'Synthetic',
+      owner_id: '00000000-0000-4000-8000-000000000001' })).status, 400);
+    assert.equal((await invoke(bAuth, 'DELETE', bId)).status, 200);
+    assert.equal((await invoke(bAuth, 'GET', bId)).status, 404);
     assert.equal((await invoke(auth, 'DELETE', id)).status, 200);
     assert.equal((await invoke(auth, 'GET', id)).status, 404);
     const explicit = '00000000-0000-4000-8000-000000000003';

@@ -12,7 +12,7 @@ export async function runAttackChecks(config) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
-  if (config.step === 3) {
+  if ([3, 4].includes(config.step)) {
     const attempts = [];
     const cases = [
       ['anonymous_list', 'GET', '/api/learning-notes'],
@@ -45,6 +45,12 @@ export async function runAttackChecks(config) {
       observed: `HTTP ${staticData.status} · ${Array.isArray(data?.notes) && data.notes.length === 0 ? '빈 메모 배열 확인' : '빈 메모 배열 확인 실패'}` });
     attempts.push({ attackId: 'authenticated_crud', expected: '정상 A 추가·수정·삭제 성공, 삭제 후 GET 404',
       observed: '배포 API의 정상 로그인 CRUD 자기 점검은 미실행. 로컬 가상 요청 테스트만 통과.' });
+    if (config.step === 4) {
+      attempts.push({ attackId: 'cross_owner_access', expected: '상대 UUID의 GET·PUT·DELETE 404, 소유자 변경 PUT 400',
+        observed: '배포 API의 인증된 A/B 교차 접근 자기 점검은 미실행. 로컬 가상 요청 테스트만 통과.' });
+      attempts.push({ attackId: 'database_rls', expected: '사용자 역할의 본인 행 CRUD 허용, 상대 행 접근·소유자 변경 거부',
+        observed: '사용자 역할로 DB에 직접 접근하는 RLS 동작 자기 점검은 미실행.' });
+    }
     return attempts;
   }
   if (config.step !== 1) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');

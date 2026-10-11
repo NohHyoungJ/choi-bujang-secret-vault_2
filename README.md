@@ -48,3 +48,13 @@ aleph.config.json은 step 5, 실제 GitHub·배포 주소, Supabase issuer/JWKS/
 respond.mjs는 만료 시각·경보 번호가 있는 후보를 deny-candidates.json에 기록하고 알림을 xdr/alerts.log에 한 줄씩 누적합니다. 정상·알림 대상, 만료 경보, 검증되지 않은 공격 기기는 규칙 등록에서 제외합니다. 실제 ZTNA 운영 어댑터와 검증된 공격 기기 연결은 없으므로 실제 규칙을 등록하지 않았습니다. 기존 src/decider.mjs와 가상 경보 원본은 보존했습니다.
 
 본 저장점은 보너스 추가이며 aleph.config.json의 본 과정 단계는 5를 유지합니다. 실제 배포 주소·발급자·허용 경로 8개·원본 API 주소를 구현과 대조했고 judgeIssuer는 보존했습니다. RULE_IDS는 실제 기본 거부 규칙 starter.deny만 유지합니다.
+
+## 보너스 xdr-02 저장점
+
+웹 주입 가상 경보용 xdr/web-injection 모듈을 추가했습니다. read-alerts.mjs는 다섯 필드만 추출하고 비밀값처럼 보이는 값은 숨깁니다. patterns.json의 SQL 주입·스크립트 태그 삽입·반복 경로 탐색 패턴을 decide.mjs 맨 위 상수로 복사했습니다. decide(alert)는 외부 파일·패키지·통신 없이 판단 결과만 반환하며 0.85 이상 block, 0.5 이상 alert, 그 아래 record입니다.
+
+재실행: `npm run xdr:run -- web-injection`. result.json은 block 7건·alert 0건·record 19건입니다. 원본 설명상 정상 이벤트 wi-18~wi-26은 모두 record이며 정상 차단은 0건입니다. 명령 구분자만 있는 wi-06은 현재 세 패턴에 해당하지 않아 record입니다. 이는 학습용 경보의 로컬 자기 점검이며 실제 차단이나 심판 판정이 아닙니다. 화면 조작 없이 결과 파일을 확인합니다.
+
+respond.mjs는 차단 후보에 5분 만료 시각과 근거 경보 번호를 붙이고, 검증된 공격 기기 및 등록된 이유 코드가 있을 때만 운영 연결 함수로 거부 규칙을 전달합니다. 알림은 xdr/alerts.log에 안전한 JSON 한 줄씩 기록합니다. 정상 이벤트·만료 경보·미확인 기기는 등록에서 제외하는 모의 연결 검증을 통과했습니다. 실제 운영 어댑터가 없어 실제 규칙 등록은 미실행이며, 이번 result 생성은 respond.mjs를 실행하지 않습니다. 기존 판정기와 경보 원본은 보존했습니다.
+
+설정의 본 과정 단계 5·기존 배포 주소·발급자·허용 경로 8개·원본 API 주소와 RULE_IDS의 starter.deny를 유지했습니다. 이번 저장점에서 앱 배포나 DB 변경은 실행하지 않았습니다.

@@ -38,3 +38,13 @@ aleph.config.json은 step 5, 실제 GitHub·배포 주소, Supabase issuer/JWKS/
 `npm run bundle`은 깨끗한 커밋과 로컬 bundle-notes.json이 필요하며 artifacts/submission.json을 생성합니다. 두 JSON 파일은 커밋하지 않습니다. 새 배포 후 결과를 다시 생성할 수 있습니다. GitHub main 푸시는 연결된 Vercel Production 빌드를 시작합니다.
 
 5단계 확인: 사용자는 직접 권한 회수 후에도 A의 본인 CRUD 성공과 상대 UUID 조회 404를 확인했습니다. 도구도 has_table_privilege의 8개 테이블 권한을 읽기 전용 조회하여 anon·authenticated 모두 권한이 없음을 확인했습니다. 브라우저의 Supabase 사용은 Auth에 한정되며 메모 CRUD는 서버 함수만 호출합니다. 서버 전용 설정과 API 소유자 검사는 유지됩니다. 사용자 JWT로 원본 REST API에 직접 요청하는 시험은 미실행입니다. 원본의 무인증 요청 거부는 JWT를 사용한 직접 접근 차단의 증거로 간주하지 않습니다.
+
+## 보너스 xdr-01 저장점
+
+무차별 로그인 가상 경보를 다루는 xdr/brute-force 모듈을 추가했습니다. read-alerts.mjs는 다섯 필드만 추출하고 비밀값처럼 보이는 내용을 숨깁니다. patterns.json의 MITRE T1110·T1110.003 두 패턴을 decide.mjs 내부 상수로 복사했으며, 판정기는 외부 파일·패키지·네트워크 없이 계산합니다.
+
+재실행: `npm run xdr:run -- brute-force`. 갱신된 result.json은 block 10건·alert 9건·record 9건입니다. 원본 설명상 정상 이벤트 bf-20~bf-28은 모두 record이며 오차단이 없었습니다. 이는 가상 경보 자기 점검이고 실제 차단이나 심판 판정이 아닙니다. 화면 조작은 없으며 터미널 결과 파일을 확인합니다.
+
+respond.mjs는 만료 시각·경보 번호가 있는 후보를 deny-candidates.json에 기록하고 알림을 xdr/alerts.log에 한 줄씩 누적합니다. 정상·알림 대상, 만료 경보, 검증되지 않은 공격 기기는 규칙 등록에서 제외합니다. 실제 ZTNA 운영 어댑터와 검증된 공격 기기 연결은 없으므로 실제 규칙을 등록하지 않았습니다. 기존 src/decider.mjs와 가상 경보 원본은 보존했습니다.
+
+본 저장점은 보너스 추가이며 aleph.config.json의 본 과정 단계는 5를 유지합니다. 실제 배포 주소·발급자·허용 경로 8개·원본 API 주소를 구현과 대조했고 judgeIssuer는 보존했습니다. RULE_IDS는 실제 기본 거부 규칙 starter.deny만 유지합니다.

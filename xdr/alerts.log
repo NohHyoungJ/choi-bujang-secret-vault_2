@@ -1,0 +1,19 @@
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-01","action":"block","confidence":0.95,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"expired_or_invalid_time"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-02","action":"block","confidence":0.95,"pattern":"여러 계정에 같은 비밀번호를 대입하는 패스워드 스프레이","status":"expired_or_invalid_time"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-03","action":"block","confidence":0.95,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"expired_or_invalid_time"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-04","action":"block","confidence":0.95,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"expired_or_invalid_time"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-05","action":"block","confidence":0.88,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"expired_or_invalid_time"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-06","action":"block","confidence":0.95,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"expired_or_invalid_time"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-07","action":"block","confidence":0.88,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"expired_or_invalid_time"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-08","action":"block","confidence":0.88,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"expired_or_invalid_time"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-09","action":"block","confidence":0.95,"pattern":"여러 계정에 같은 비밀번호를 대입하는 패스워드 스프레이","status":"expired_or_invalid_time"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-10","action":"block","confidence":0.88,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"expired_or_invalid_time"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-11","action":"alert","confidence":0.55,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"notification_only"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-12","action":"alert","confidence":0.65,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"notification_only"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-13","action":"alert","confidence":0.55,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"notification_only"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-14","action":"alert","confidence":0.55,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"notification_only"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-15","action":"alert","confidence":0.55,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"notification_only"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-16","action":"alert","confidence":0.55,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"notification_only"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-17","action":"alert","confidence":0.55,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"notification_only"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-18","action":"alert","confidence":0.55,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"notification_only"}
+{"at":"2026-10-11T17:46:25.098Z","alertId":"bf-19","action":"alert","confidence":0.55,"pattern":"같은 출발 주소의 짧은 시간 내 로그인 실패 반복","status":"notification_only"}

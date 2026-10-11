@@ -12,7 +12,7 @@ export async function runAttackChecks(config) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
-  if ([3, 4].includes(config.step)) {
+  if ([3, 4, 5].includes(config.step)) {
     const attempts = [];
     const cases = [
       ['anonymous_list', 'GET', '/api/learning-notes'],
@@ -45,11 +45,27 @@ export async function runAttackChecks(config) {
       observed: `HTTP ${staticData.status} · ${Array.isArray(data?.notes) && data.notes.length === 0 ? '빈 메모 배열 확인' : '빈 메모 배열 확인 실패'}` });
     attempts.push({ attackId: 'authenticated_crud', expected: '정상 A 추가·수정·삭제 성공, 삭제 후 GET 404',
       observed: '배포 API의 정상 로그인 CRUD 자기 점검은 미실행. 로컬 가상 요청 테스트만 통과.' });
-    if (config.step === 4) {
+    if (config.step >= 4) {
       attempts.push({ attackId: 'cross_owner_access', expected: '상대 UUID의 GET·PUT·DELETE 404, 소유자 변경 PUT 400',
         observed: '배포 API의 인증된 A/B 교차 접근 자기 점검은 미실행. 로컬 가상 요청 테스트만 통과.' });
       attempts.push({ attackId: 'database_rls', expected: '사용자 역할의 본인 행 CRUD 허용, 상대 행 접근·소유자 변경 거부',
         observed: '사용자 역할로 DB에 직접 접근하는 RLS 동작 자기 점검은 미실행.' });
+    }
+    if (config.step === 5) {
+      const original = new URL(config.originalApiUrl);
+      if (original.protocol !== 'https:' || original.username || original.password || original.search || original.hash) {
+        throw new Error('originalApiUrl은 쿼리 없는 원본 HTTPS 자료 경로여야 합니다.');
+      }
+      try {
+        const response = await fetch(original, { redirect: 'error', signal: AbortSignal.timeout(10000) });
+        attempts.push({ attackId: 'original_without_credentials', expected: '인증 정보 없는 원본 API 요청 거부',
+          observed: `HTTP ${response.status} · ${[401, 403].includes(response.status) ? '거부 응답 확인' : '예상한 거부 상태 아님'}. 이 요청은 DB 역할 권한 시험이 아님.` });
+        await response.body?.cancel();
+      } catch {
+        attempts.push({ attackId: 'original_without_credentials', expected: '인증 정보 없는 원본 API 요청 거부', observed: '요청 실패: 응답 확인 불가' });
+      }
+      attempts.push({ attackId: 'original_authenticated_access', expected: '사용자 JWT로 원본 메모 API 직접 CRUD 거부',
+        observed: '사용자 JWT를 이용한 원본 API 직접 접근 자기 점검은 미실행.' });
     }
     return attempts;
   }

@@ -21,6 +21,10 @@
     .auth form { display: grid; gap: 10px; }
     .auth label { display: grid; gap: 4px; font-size: 14px; color: #bfd0e5; }
     .auth input { padding: 10px 12px; border: 1px solid #51667c; border-radius: 8px; background: #101a28; color: #ecf4ff; font-size: 16px; }
+    .auth textarea { padding: 10px 12px; border: 1px solid #51667c; border-radius: 8px; background: #101a28; color: #ecf4ff; font: inherit; resize: vertical; }
+    #lookup-form { margin-top: 20px; }
+    li button { margin: 8px 8px 0 0; padding: 8px 14px; cursor: pointer; }
+    li span { white-space: pre-wrap; }
     .auth button { padding: 10px 14px; border: 0; border-radius: 8px; background: #8ad8df; color: #101a28; font-size: 16px; font-weight: 700; cursor: pointer; }
     .auth button:disabled { opacity: .6; cursor: wait; }
     .auth .signed-in { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
@@ -34,7 +38,7 @@
   <main>
     <div class="eyebrow">BYTE BACK · 1단계 피해 확인</div>
     <h1>점령된 자료실</h1>
-    <p>지금은 보호 장치가 없는 상태입니다. 아래 기록은 모두 실습을 위해 만든 가상 자료입니다.</p>
+    <p>로그인해서 가상 메모를 관리하세요. 현재 단계에서는 다른 사용자의 메모도 ID를 알면 수정·삭제할 수 있습니다.</p>
     <div class="notice">로그인한 사용자만 자료를 볼 수 있습니다. 로그인하지 않았거나 로그인 확인에 실패하면 서버가 자료를 보내지 않습니다.</div>
     <section class="auth" aria-labelledby="auth-title">
       <h2 id="auth-title">로그인</h2>
@@ -52,6 +56,21 @@
         <button id="logout-button" type="button">로그아웃</button>
       </div>
       <p id="auth-message" class="auth-message" role="status" aria-live="polite"></p>
+    </section>
+    <section id="editor" class="auth" hidden>
+      <h2>가상 메모 추가·수정</h2>
+      <form id="note-form">
+        <label>메모 ID (새 메모는 비워 두세요)<input id="note-id" readonly></label>
+        <label>제목<input id="note-title" maxlength="200" required></label>
+        <label>내용<textarea id="note-body" maxlength="20000" rows="5" required></textarea></label>
+        <button id="note-save" type="submit">저장</button>
+        <button id="note-new" type="button">새 메모</button>
+      </form>
+      <form id="lookup-form">
+        <label>UUID로 메모 열기<input id="lookup-id" required></label>
+        <button type="submit">열기</button>
+      </form>
+      <p id="note-message" role="status"></p>
     </section>
     <ul id="notes" aria-live="polite"><li>가상 자료를 불러오는 중입니다.</li></ul>
   </main>
@@ -73,6 +92,7 @@
         showListMessage('로그인하면 자료를 볼 수 있습니다.');
         return;
       }
+      showListMessage('내 메모를 불러오는 중입니다.');
       try {
         const response = await fetch('/api/learning-notes', {
           cache: 'no-store',
@@ -83,14 +103,24 @@
         if (!response.ok) throw new Error('자료를 읽을 수 없습니다.');
         const data = await response.json();
         if (sequence !== loadSequence) return;
-        if (!Array.isArray(data.notes)) throw new Error('자료 형식이 맞지 않습니다.');
-        list.replaceChildren(...data.notes.map(note => {
+        if (!Array.isArray(data)) throw new Error('자료 형식이 맞지 않습니다.');
+        if (!data.length) { showListMessage('내 메모가 없습니다. 새 메모를 추가하세요.'); return; }
+        list.replaceChildren(...data.map(note => {
           const item = document.createElement('li');
           const title = document.createElement('strong');
           const content = document.createElement('span');
           title.textContent = note.title;
-          content.textContent = note.content;
+          content.textContent = note.body;
           item.append(title, content);
+          const identifier = document.createElement('p');
+          identifier.textContent = `ID: ${note.id}`;
+          const edit = document.createElement('button');
+          edit.textContent = '수정';
+          edit.onclick = () => openNote(note.id);
+          const remove = document.createElement('button');
+          remove.textContent = '삭제';
+          remove.onclick = () => deleteNote(note.id);
+          item.append(identifier, edit, remove);
           return item;
         }));
       } catch (error) {
@@ -141,6 +171,63 @@
     }
 
     let supabase;
+    const editor = document.querySelector('#editor');
+    const noteForm = document.querySelector('#note-form');
+    const noteId = document.querySelector('#note-id');
+    const noteTitle = document.querySelector('#note-title');
+    const noteBody = document.querySelector('#note-body');
+    const noteMessage = document.querySelector('#note-message');
+    let sessionUser;
+    async function noteRequest(method, id, body) {
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data.session) throw new Error('로그인이 필요합니다.');
+      const response = await fetch(`/api/learning-notes${id ? `/${encodeURIComponent(id)}` : ''}`, {
+        method, cache: 'no-store',
+        headers: { Authorization: `Bearer ${data.session.access_token}`, 'Content-Type': 'application/json' },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(`요청 실패 (${response.status}: ${result.error ?? '오류'})`);
+      return result;
+    }
+    async function refreshNotes() {
+      const { data } = await supabase.auth.getSession();
+      await loadNotes(data.session?.access_token);
+    }
+    async function openNote(id) {
+      const user = sessionUser;
+      try {
+        const note = await noteRequest('GET', id);
+        if (!user || user !== sessionUser) return;
+        noteId.value = note.id; noteTitle.value = note.title; noteBody.value = note.body;
+        noteMessage.textContent = '메모를 열었습니다.';
+      } catch (error) { if (user === sessionUser) noteMessage.textContent = error.message; }
+    }
+    async function deleteNote(id) {
+      if (!confirm('이 가상 메모를 삭제할까요?')) return;
+      try {
+        await noteRequest('DELETE', id);
+        if (noteId.value === id) noteForm.reset();
+        noteMessage.textContent = '삭제했습니다.';
+        await refreshNotes();
+      } catch (error) { noteMessage.textContent = error.message; }
+    }
+    document.querySelector('#note-new').onclick = () => { noteForm.reset(); noteMessage.textContent = ''; };
+    document.querySelector('#lookup-form').onsubmit = event => {
+      event.preventDefault(); openNote(document.querySelector('#lookup-id').value.trim());
+    };
+    noteForm.onsubmit = async event => {
+      event.preventDefault();
+      const button = document.querySelector('#note-save');
+      button.disabled = true;
+      try {
+        await noteRequest(noteId.value ? 'PUT' : 'POST', noteId.value,
+          { title: noteTitle.value, body: noteBody.value });
+        noteForm.reset(); noteMessage.textContent = '저장했습니다.';
+        await refreshNotes();
+      } catch (error) { noteMessage.textContent = error.message; }
+      finally { button.disabled = false; }
+    };
     try {
       const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.117.2');
       supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
@@ -152,6 +239,11 @@
 
     if (supabase) {
       supabase.auth.onAuthStateChange((_event, session) => {
+        if (sessionUser !== session?.user?.id) {
+          noteForm.reset(); document.querySelector('#lookup-form').reset(); noteMessage.textContent = '';
+        }
+        sessionUser = session?.user?.id;
+        editor.hidden = !session;
         render(session);
         loadNotes(session?.access_token);
       });

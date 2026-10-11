@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 import config from '../aleph.config.json' with { type: 'json' };
 import { createLoginVerifier } from '../src/verify-login.mjs';
 
@@ -19,8 +20,14 @@ export default async function handler(request, response) {
   response.setHeader('X-Content-Type-Options', 'nosniff');
   response.setHeader('Vary', 'Authorization');
 
-  if (request.method !== 'GET') {
-    response.setHeader('Allow', 'GET');
+  const path = new URL(request.url ?? '/api/learning-notes', 'https://local.invalid').pathname;
+  const match = /^\/api\/learning-notes(?:\/([^/]+))?\/?$/.exec(path);
+  if (!match) return sendError(response, 404, 'NOT_FOUND');
+  const id = match[1];
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const methods = id ? ['GET', 'PUT', 'DELETE'] : ['GET', 'POST'];
+  if (!methods.includes(request.method)) {
+    response.setHeader('Allow', methods.join(', '));
     return sendError(response, 405, 'METHOD_NOT_ALLOWED');
   }
 
@@ -47,6 +54,21 @@ export default async function handler(request, response) {
     return sendError(response, 503, 'SERVER_CONFIGURATION_INVALID');
   }
   if (!login) return denyLogin();
+  if (id && !uuid.test(id)) return sendError(response, 400, 'INVALID_ID');
+
+  let input;
+  if (['POST', 'PUT'].includes(request.method)) {
+    try { input = typeof request.body === 'string' ? JSON.parse(request.body) : request.body; }
+    catch { return sendError(response, 400, 'INVALID_NOTE'); }
+    if (!input || typeof input.title !== 'string' || !input.title.trim()
+        || typeof input.body !== 'string' || !input.body.trim()
+        || input.title.length > 200 || input.body.length > 20000) {
+      return sendError(response, 400, 'INVALID_NOTE');
+    }
+    if (request.method === 'POST' && input.id !== undefined && !uuid.test(input.id)) {
+      return sendError(response, 400, 'INVALID_ID');
+    }
+  }
 
   try {
     const parsedUrl = new URL(supabaseUrl);
@@ -62,21 +84,29 @@ export default async function handler(request, response) {
         detectSessionInUrl: false,
       },
     });
-    const { data, error } = await supabase
-      .from('learning_notes')
-      .select('title,content')
-      .order('id', { ascending: true });
-
-    if (error || !Array.isArray(data)
-        || data.some(note => typeof note.title !== 'string' || typeof note.content !== 'string')) {
-      return sendError(response, 502, 'LEARNING_NOTES_UNAVAILABLE');
+    const table = () => supabase.from('learning_notes');
+    if (request.method === 'POST') {
+      const newId = input.id ?? randomUUID();
+      const { error } = await table().insert({ note_id: newId, title: input.title,
+        content: input.body, owner_id: login.userId });
+      if (error) return sendError(response, error.code === '23505' ? 409 : 502, 'NOTE_CREATE_FAILED');
+      return response.status(201).json({ id: newId });
     }
-
-    return response.status(200).json({
-      notes: data.map(({ title, content }) => ({ title, content })),
-    });
+    // Stage 3: individual operations intentionally do not filter owner_id yet.
+    let query;
+    if (!id) query = table().select('note_id,title,content').eq('owner_id', login.userId).order('created_at').order('note_id');
+    else if (request.method === 'GET') query = table().select('note_id,title,content').eq('note_id', id).maybeSingle();
+    else if (request.method === 'PUT') query = table().update({ title: input.title, content: input.body })
+      .eq('note_id', id).select('note_id,title,content').maybeSingle();
+    else query = table().delete().eq('note_id', id).select('note_id').maybeSingle();
+    const { data, error } = await query;
+    if (error) return sendError(response, 502, 'LEARNING_NOTES_UNAVAILABLE');
+    if (id && !data) return sendError(response, 404, 'NOTE_NOT_FOUND');
+    if (request.method === 'DELETE') return response.status(200).json({ id });
+    const note = row => ({ id: row.note_id, title: row.title, body: row.content });
+    return response.status(200).json(id ? note(data) : data.map(note));
   } catch {
     // Never log or return the Supabase URL, key, or upstream error details.
     return sendError(response, 502, 'LEARNING_NOTES_UNAVAILABLE');
   }
-}
+}

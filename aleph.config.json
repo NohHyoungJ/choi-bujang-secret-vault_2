@@ -9,7 +9,13 @@
     "jwksUrl": "https://eqfkncijzfsatalbhmij.supabase.co/auth/v1/.well-known/jwks.json",
     "audience": "authenticated"
   },
-  "allowedRoutes": [],
+  "allowedRoutes": [
+    "GET /api/learning-notes",
+    "POST /api/learning-notes",
+    "GET /api/learning-notes/:id",
+    "PUT /api/learning-notes/:id",
+    "DELETE /api/learning-notes/:id"
+  ],
   "originalApiUrl": null,
   "restoreRoute": null
 }

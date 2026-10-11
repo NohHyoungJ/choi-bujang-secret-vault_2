@@ -6,3 +6,5 @@ node_modules/
 public/aleph.json
 supabase/learning_notes.sql
 supabase/.temp/
+.vercel
+.env*

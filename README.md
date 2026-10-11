@@ -1,58 +1,35 @@
-# BYTE BACK 방어전 시작 틀 R5
+# BYTE BACK 자료실 · 3단계 저장점
 
-이 저장소는 1단계에서 학생 본인이 GitHub 저장소와 Vercel 배포를 만드는 출발점입니다. 학습용 가상 메모는 공개 정적 JSON에서 제거하고, Vercel 서버 함수가 Supabase 학습 테이블에서 읽도록 구성했습니다. 실제 학생 자료, 토큰, 비밀키를 넣지 마세요.
+처음 확인한 로그인 자료실은 2단계 상태이며, 이번 저장점은 로그인 사용자 메모 CRUD를 추가한 3단계입니다.
 
-## 학생이 하는 일: 세 걸음
+## 현재 기능
 
-1. GitHub 계정을 만듭니다.
-2. 방어전 1단계 카드의 **Deploy** 버튼을 누릅니다. Vercel에 GitHub로 로그인하고, 새 저장소가 **본인 계정의 Public 저장소**인지 확인한 뒤 Deploy를 누릅니다.
-3. 배포가 끝나면 화면에 나온 `https://…vercel.app` 주소를 방어전 1단계 카드에 붙여넣고 제출합니다. 저장소 주소나 설정 파일은 적지 않습니다.
+- Supabase 공식 SDK 이메일·비밀번호 로그인·로그아웃과 실패 이유 표시.
+- 자료 API는 기존 `src/verify-login.mjs`로 토큰을 검증하며 브라우저의 userId·role을 신뢰하지 않습니다.
+- 목록 GET은 검증된 사용자의 메모 배열을 반환합니다. 새 메모의 owner_id는 서버가 확인한 사용자 ID입니다.
+- POST /api/learning-notes: {id?,title,body}, id는 UUID이며 생략하면 서버가 생성해 {id}를 반환합니다.
+- GET·PUT·DELETE /api/learning-notes/:id. 단건 GET은 {id,title,body}, 삭제 뒤 GET은 404입니다.
+- 개별 조회·수정·삭제의 소유자 검사는 아직 없습니다. B가 A의 UUID로 수정·삭제할 수 있으며 4단계에서 보완할 대상입니다.
+- 기존 가상 메모 4개와 숫자 기본키를 보존하고, API용 UUID note_id 컬럼을 추가했습니다. 본인 소유가 아닌 기존 메모는 본인 목록에 나오지 않습니다.
+- 공개 data.json에는 notes 빈 배열만 있습니다. 빌드는 메모 본문이 들어 있는 정적 JSON을 거부합니다.
+- AI·침해 정보 API는 501 시작 틀이며, 판정기는 starter.deny만 구현하고 탐지기는 관찰만 합니다.
 
-`/data.json`은 메모가 비어 있는 정적 확인용 JSON입니다. 학습 메모는 이 정적 파일에 들어 있지 않습니다.
+## 다시 실행하고 확인하기
 
-## 학습 메모를 Supabase에 적재하기
+Node.js 22 이상에서 npm install 후 `node --test test/learning-notes-auth.test.mjs`와 `npm run build -- --local`을 실행합니다. 로컬 정적 빌드만으로 서버 API·실제 DB 연결이 검증되지는 않습니다.
 
-프로젝트의 `supabase/learning_notes.sql`에는 네 개의 가상 메모를 `public.learning_notes`에 넣는 SQL이 있습니다. `owner_id`는 nullable `uuid` 컬럼이며 `auth.users` 외래키를 만들지 않습니다. 테이블에는 RLS를 켜고 `anon`·`authenticated` 권한을 회수하며 읽기 정책을 만들지 않습니다.
+배포 자료실: https://choi-bujang-secret-vault2.vercel.app/
 
-해당 SQL 파일은 메모 본문을 포함하므로 `.gitignore`에 넣었습니다. 로컬에서 파일을 열어 Supabase Dashboard의 **SQL Editor → New query**에 내용을 붙여넣고 **Run**을 누르세요. 이 SQL 파일 자체는 GitHub에 커밋하지 마세요. 실행 뒤 Table Editor에서 `learning_notes`의 `owner_id` 형식이 `uuid`인지, RLS가 켜져 있는지 확인합니다. SQL Editor 실행은 이 도구에서 대신할 수 없습니다.
+화면에서 로그인 → 제목·내용 입력 → 저장 → 수정·삭제를 누릅니다. 정상 A는 CRUD가 가능해야 하고, 무로그인·잘못된 토큰 요청은 자료 없이 401이어야 하며, 삭제한 UUID 조회는 404여야 합니다.
 
-## Vercel 서버 함수와 환경 변수
+Vercel 서버 환경 변수 SUPABASE_URL과 SUPABASE_SECRET_KEY는 공식 Settings → Environment Variables에서만 관리합니다. 비밀번호·JWT·서버 키·실제 개인정보를 코드나 제출 묶음에 넣지 않습니다.
 
-화면은 `/api/learning-notes`를 호출하고, `api/learning-notes.js`가 서버 쪽에서 `SUPABASE_URL`과 `SUPABASE_SECRET_KEY` 환경 변수를 읽어 `learning_notes` 테이블의 `title`, `content`만 조회합니다. 둘 다 **Vercel 프로젝트의 Settings → Environment Variables**에 서버 환경 변수로 설정하세요. 값은 브라우저 코드, 응답, 로그 또는 저장소에 넣지 마세요. `NEXT_PUBLIC_` 같은 공개 접두사를 붙이지 말고, 값 자체를 GitHub에 커밋하지 마세요. 개발자 도구의 Network 탭에서 응답에 메모가 보이는 것은 화면에 메모를 표시하므로 정상입니다. 단, 서버 키는 응답에 절대로 포함되면 안 됩니다.
+UUID 컬럼 마이그레이션 `supabase/migrations/202610120001_notes_uuid.sql`은 연결된 DB에 적용했습니다. 기존 메모 본문은 저장소에 포함하지 않습니다.
 
-**보안상 제한:** 현재 `/api/learning-notes`는 공개 URL에 있으며 로그인, 사용자별 권한 확인, 요청 제한이 없습니다. 따라서 URL을 아는 사람은 누구나 네 건의 가상 메모를 읽을 수 있습니다. API가 공개 주소라는 점은 약점이며, 현재 구현을 비공개·실제 개인정보 자료에 사용하지 마세요. 이후 인증, 사용자별 접근 정책, 남용 방지 기능을 추가하기 전까지 가상 학습 자료만 사용하세요. Supabase 비밀 키는 RLS를 우회할 수 있는 서버 권한이므로 노출되면 즉시 Supabase에서 교체해야 합니다.
+## 설정과 검증 범위
 
-## 현재 배포본과 GitHub 최신 파일 점검
+aleph.config.json은 step 3, 실제 GitHub·배포 주소, Supabase issuer/JWKS/audience, GET·POST·PUT·DELETE 경로를 기록합니다. originalApiUrl은 5단계 이전이므로 null입니다. judgeIssuer는 운영 측 주소를 그대로 보존했습니다.
 
-이 절차는 **현재 공개된 정적 파일과 GitHub 기본 브랜치의 최신 파일**만 확인합니다. 확인할 문구는 현재 학습 메모 응답의 각 `notes` 항목에 있는 `title`과 `content` 값입니다. 브라우저에서 `/api/learning-notes`를 열어 그 값을 확인하고, 각 값을 하나씩 복사해 아래 확인에 사용하세요. 문구 자체를 이 README나 공개 정적 파일에 다시 적지는 마세요.
+실제 배포에서 A 로그인과 기존 자료 4개 표시는 사용자가 확인했습니다. CRUD는 로컬 가상 요청 테스트 통과이며, 실제 A 계정의 CRUD 자기 점검은 미실행입니다. 무로그인·잘못된 토큰의 실제 API 거부와 정적 메모 부재는 `npm run bundle`의 src/attack-check.mjs에서 다시 요청해 기록합니다. 이는 학생 자기 점검이며 심판 판정이 아닙니다.
 
-### 배포된 정적 파일
-
-1. Vercel에서 현재 Production 배포의 상태가 `Ready`인지 확인하고, 그 배포의 도메인을 사용합니다.
-2. `https://배포주소/data.json`을 열어 `"notes": []`인지 확인합니다. 각 메모의 제목과 본문 문구를 브라우저의 찾기 기능(Ctrl+F 또는 ⌘+F)으로 검색해 **일치 항목이 없어야** 합니다.
-3. 홈페이지 원본 HTML도 확인합니다. 주소창에 `view-source:https://배포주소/`를 입력한 뒤 각 문구를 찾아 **일치 항목이 없어야** 합니다. 렌더링된 홈페이지에서는 API가 불러온 메모가 보이는 것이 정상이며, 이는 정적 HTML에 문장이 들어 있다는 뜻은 아닙니다.
-4. `/api/learning-notes` 응답에는 화면 표시를 위해 제목과 본문이 포함되는 것이 현재 동작입니다. 이 API에서 문구가 검색되는 것은 예상된 결과이며, **공개 API가 메모를 누구에게나 제공한다는 사실도 함께 확인**하는 것입니다. 따라서 이 결과를 메모가 비공개라는 증거로 해석하지 마세요. 응답에 서버 키가 없어야 합니다.
-
-### GitHub 기본 브랜치의 최신 파일
-
-1. GitHub에서 저장소의 기본 브랜치와 최신 커밋을 확인합니다. Vercel Production 배포 상세에 표시된 커밋과 GitHub 최신 커밋이 같은지 대조해 확인 대상이 일치하는지 살펴봅니다.
-2. GitHub 저장소 코드 검색에서 위에서 복사한 각 제목·본문 문구를 하나씩 정확히 검색합니다. 검색 결과가 있으면 해당 파일을 최신 기본 브랜치에서 열어 내용을 확인합니다. `data.json`, `public/data.json`, `public/index.html`, `api/learning-notes.js`를 직접 열어서도 문구를 찾아보세요. 현재 버전의 정적 자료와 앱 코드에는 메모 문장이 없어야 합니다. SQL 파일은 GitHub에 커밋하지 않는 것이 원칙입니다. `.gitignore`는 이미 추적 중인 파일을 자동으로 저장소에서 제거하지 않으므로, SQL 파일이 저장소에 있는지도 따로 확인하세요.
-3. 코드 검색 결과가 없다는 사실만으로 전체 저장소나 과거 이력이 정리됐다고 판단하지 마세요. 검색 색인 지연이나 검색 범위의 한계가 있을 수 있으므로, 현재 기본 브랜치의 최신 파일도 직접 확인합니다.
-
-### 확인 결과의 한계
-
-위 절차는 최신 정적 파일과 현재 기본 브랜치의 확인일 뿐, 과거 공개 이력의 삭제나 과거 노출의 해소를 증명하지 않습니다. **옛 공개 커밋이나 옛 배포가 남아 있는 한 과거 노출이 해소됐다고 쓰거나 판단하지 마세요.** 과거 공개 커밋의 기록, 접근 가능한 옛 배포, 캐시·복제본은 최신 파일을 바꾸는 것만으로 사라지지 않습니다. 과거 노출까지 정리하려면 GitHub 이력과 기존 배포를 별도로 검토하고 필요한 제거·정리 절차를 진행해야 하며, 이 점검만으로 그 작업이 완료됐다고 볼 수 없습니다.
-
-## 시작 틀의 자동 처리
-
-`vercel.json`은 정적 결과물 `public`을 배포합니다. 빌드 명령 `npm run build`는 원본 `data.json`의 메모 배열이 비어 있는지 확인한 뒤 `public/data.json`으로 복사합니다. 메모가 하나라도 있으면 공개 빌드를 중단합니다. Vercel이 제공하는 GitHub 저장소 소유자·이름, 커밋 SHA, 배포 URL을 검증하고 `public/aleph.json`을 생성합니다. 이 값이 없으면 빌드가 실패하므로, 성공한 것처럼 빈 주소를 내보내지 않습니다. `aleph.json`의 내용만으로 저장소 소유권이나 방어 성공을 인정하지 않습니다. 심판이 공개 저장소의 실제 커밋과 배포된 자료를 따로 대조해야 합니다.
-
-`aleph.config.json`의 `repoUrl`과 `publicAppUrl`은 이전 제출 묶음 방식의 자리표시자입니다. 1단계에서는 학생이 편집하지 않습니다. `npm run bundle`과 `bundle-notes.json`도 1단계의 세 걸음에는 포함되지 않습니다.
-
-로컬에서 메모 없는 정적 파일을 확인할 때는 `npm run build -- --local`을 사용할 수 있습니다. 다만 이 명령만으로는 Vercel 서버 함수가 로컬 실행되거나 Supabase 연결이 검증되지 않습니다. Vercel에서 실제로 확인하려면 배포 후 `/api/learning-notes`와 화면을 여세요. `src/attack-check.mjs`는 현재 정적 `/data.json`만 확인하며, 새 API의 인증·공개 접근 보안을 점검하지 않습니다. 이 점검은 학생의 자기 점검이며, 심판 판정이 아닙니다.
-
-## 다음 단계의 코딩 도구에 전달할 규칙
-
-[AGENTS.md](AGENTS.md)를 먼저 읽히고 한 번에 한 제작 단위만 요청하세요. 2단계 이후 자료 보호를 구현할 때 정적 공개 빌드 흐름도 함께 점검합니다. 3단계 이후의 로그인, 허용 경로, 5단계의 원본 API 주소, 6단계 이후 정책 규칙은 해당 단계 원고와 계약에 맞춰 추가합니다. 비밀번호·토큰·서버 전용 키·실제 학생 기록을 코드, Git, 제출 묶음에 넣지 않습니다.
-
-`src/decider.mjs`와 `src/detect.mjs`의 로컬 시험은 반 엔진이나 운영 심판의 결과가 아닙니다. 1단계 이후 제출 묶음 계약 `aleph.defense.submission.v2`는 `scripts/bundle.mjs`에 남아 있으며, 코딩 도구가 해당 단계의 최신 배포 주소와 Git 원격을 맞춘 뒤 사용합니다.
+`npm run bundle`은 깨끗한 커밋과 로컬 bundle-notes.json이 필요하며 artifacts/submission.json을 생성합니다. 두 JSON 파일은 커밋하지 않습니다. 새 배포 후 결과를 다시 생성할 수 있습니다. GitHub main 푸시는 연결된 Vercel Production 빌드를 시작합니다.

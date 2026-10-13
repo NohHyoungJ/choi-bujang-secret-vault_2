@@ -12,7 +12,7 @@ export async function runAttackChecks(config) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
-  if ([3, 4, 5].includes(config.step)) {
+  if ([3, 4, 5, 6].includes(config.step)) {
     const attempts = [];
     const cases = [
       ['anonymous_list', 'GET', '/api/learning-notes'],
@@ -51,7 +51,7 @@ export async function runAttackChecks(config) {
       attempts.push({ attackId: 'database_rls', expected: '사용자 역할의 본인 행 CRUD 허용, 상대 행 접근·소유자 변경 거부',
         observed: '사용자 역할로 DB에 직접 접근하는 RLS 동작 자기 점검은 미실행.' });
     }
-    if (config.step === 5) {
+    if (config.step >= 5) {
       const original = new URL(config.originalApiUrl);
       if (original.protocol !== 'https:' || original.username || original.password || original.search || original.hash) {
         throw new Error('originalApiUrl은 쿼리 없는 원본 HTTPS 자료 경로여야 합니다.');

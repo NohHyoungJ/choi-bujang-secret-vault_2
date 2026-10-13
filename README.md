@@ -1,4 +1,4 @@
-# BYTE BACK 자료실 · 5단계 저장점
+# BYTE BACK 자료실 · 6단계 저장점
 
 처음 확인한 로그인 자료실은 2단계, 메모 CRUD 추가는 3단계이며, 4단계에서 API 소유자 검사·RLS를 추가했고, 이번 5단계에서는 브라우저 자료 호출이 서버 함수를 통하는지 확인하고 원본 DB 직접 권한을 회수했습니다.
 
@@ -13,11 +13,17 @@
 - 학습 DB의 RLS 정책은 authenticated의 SELECT·DELETE에 USING, INSERT에 WITH CHECK, UPDATE에 둘 다 auth.uid() = owner_id를 적용합니다. 4단계에서는 authenticated CRUD를 허용했으나 5단계에서는 PUBLIC·anon·authenticated의 메모 테이블 직접 권한을 회수했습니다. RLS 정책은 보존했습니다.
 - 기존 가상 메모 4개와 숫자 기본키를 보존하고, API용 UUID note_id 컬럼을 추가했습니다. 본인 소유가 아닌 기존 메모는 본인 목록에 나오지 않습니다.
 - 공개 data.json에는 notes 빈 배열만 있습니다. 빌드는 메모 본문이 들어 있는 정적 JSON을 거부합니다.
-- AI·침해 정보 API는 501 시작 틀이며, 판정기는 starter.deny만 구현하고 탐지기는 관찰만 합니다.
+- AI·침해 정보 API는 501 시작 틀이며, 판정기는 등록 기기만 허용하는 `device_registered` 규칙을 구현하고 탐지기는 관찰만 합니다.
 
 ## 다시 실행하고 확인하기
 
 Node.js 22 이상에서 npm install 후 `node --test test/learning-notes-auth.test.mjs`와 `npm run build -- --local`을 실행합니다. 로컬 정적 빌드만으로 서버 API·실제 DB 연결이 검증되지는 않습니다.
+
+## 6단계 판정기 확인 순서
+
+터미널에서 `npm run decider:test`를 실행합니다. 출력에서 `등록 기기의 정상 요청`과 `미등록 기기의 가상 요청`이 각각 `통과`인지 확인합니다. 정상 등록 요청은 `allow`, 미등록 또는 등록 값이 없는 요청은 `deny`와 `device_not_registered`여야 합니다. 이 스크립트는 가상 요청 연습이며 실제 미등록 기기 공격 검증은 심판이 맡습니다.
+
+이번 작업 셸에는 `npm` 명령이 없어 위 명령은 시작되지 않았습니다. 같은 연습 스크립트를 Node.js로 직접 실행한 결과 두 항목 모두 통과했습니다. 출력은 가상 요청 자기 점검이며 심판 판정 증거가 아닙니다.
 
 배포 자료실: https://choi-bujang-secret-vault2.vercel.app/
 
@@ -29,7 +35,7 @@ UUID 컬럼 마이그레이션 `supabase/migrations/202610120001_notes_uuid.sql`
 
 ## 설정과 검증 범위
 
-aleph.config.json은 step 5, 실제 GitHub·배포 주소, Supabase issuer/JWKS/audience, GET·POST·PUT·DELETE 경로를 기록합니다. originalApiUrl은 쿼리 없는 https://eqfkncijzfsatalbhmij.supabase.co/rest/v1/learning_notes 입니다. judgeIssuer는 운영 측 주소를 그대로 보존했습니다. RULE_IDS는 실제 기본 거부 동작 starter.deny만 유지합니다.
+aleph.config.json은 step 6, 실제 GitHub·배포 주소, Supabase issuer/JWKS/audience, GET·POST·PUT·DELETE 경로를 기록합니다. originalApiUrl은 쿼리 없는 https://eqfkncijzfsatalbhmij.supabase.co/rest/v1/learning_notes 입니다. judgeIssuer는 운영 측 주소를 그대로 보존했습니다. 현재 판정기 `RULE_IDS`에는 실제 구현한 `device_registered` 규칙을 기록합니다.
 
 사용자는 A의 기존 네 메모·B 시험 메모 목록 분리, 실제 A 임시 메모 추가·조회·수정·삭제와 B의 A UUID 조회 404를 확인했습니다. SQL 결과 화면에서 anon 권한 전체 false, authenticated CRUD만 true 및 소유자 정책 4개를 확인했습니다. 실제 상대 메모 수정·삭제 거부와 소유자 변경 거부는 로컬 가상 요청 테스트 통과이며, 도구의 인증된 배포 CRUD·교차 접근 자기 점검과 사용자 역할의 직접 DB RLS 시험은 미실행입니다.
 

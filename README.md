@@ -1,4 +1,4 @@
-# BYTE BACK 자료실 · 6단계 저장점
+# BYTE BACK 자료실 · 7단계 저장점
 
 처음 확인한 로그인 자료실은 2단계, 메모 CRUD 추가는 3단계이며, 4단계에서 API 소유자 검사·RLS를 추가했고, 이번 5단계에서는 브라우저 자료 호출이 서버 함수를 통하는지 확인하고 원본 DB 직접 권한을 회수했습니다.
 
@@ -13,7 +13,7 @@
 - 학습 DB의 RLS 정책은 authenticated의 SELECT·DELETE에 USING, INSERT에 WITH CHECK, UPDATE에 둘 다 auth.uid() = owner_id를 적용합니다. 4단계에서는 authenticated CRUD를 허용했으나 5단계에서는 PUBLIC·anon·authenticated의 메모 테이블 직접 권한을 회수했습니다. RLS 정책은 보존했습니다.
 - 기존 가상 메모 4개와 숫자 기본키를 보존하고, API용 UUID note_id 컬럼을 추가했습니다. 본인 소유가 아닌 기존 메모는 본인 목록에 나오지 않습니다.
 - 공개 data.json에는 notes 빈 배열만 있습니다. 빌드는 메모 본문이 들어 있는 정적 JSON을 거부합니다.
-- AI·침해 정보 API는 501 시작 틀이며, 판정기는 등록 기기만 허용하는 `device_registered` 규칙을 구현하고 탐지기는 관찰만 합니다.
+- AI·침해 정보 API는 501 시작 틀이며, 판정기는 `device_registered`와 가상 복합 이상 접속에 추가 확인을 요청하는 `step_up_required` 규칙을 구현하고 탐지기는 관찰만 합니다. 실제 재인증 연결은 미실행입니다.
 
 ## 다시 실행하고 확인하기
 
@@ -35,7 +35,7 @@ UUID 컬럼 마이그레이션 `supabase/migrations/202610120001_notes_uuid.sql`
 
 ## 설정과 검증 범위
 
-aleph.config.json은 step 6, 실제 GitHub·배포 주소, Supabase issuer/JWKS/audience, GET·POST·PUT·DELETE 경로를 기록합니다. originalApiUrl은 쿼리 없는 https://eqfkncijzfsatalbhmij.supabase.co/rest/v1/learning_notes 입니다. judgeIssuer는 운영 측 주소를 그대로 보존했습니다. 현재 판정기 `RULE_IDS`에는 실제 구현한 `device_registered` 규칙을 기록합니다.
+aleph.config.json은 step 7, 기존 GitHub·배포 주소, Supabase issuer/JWKS/audience, GET·POST·PUT·DELETE 경로를 구현과 대조해 기록합니다. originalApiUrl은 쿼리 없는 https://eqfkncijzfsatalbhmij.supabase.co/rest/v1/learning_notes 입니다. judgeIssuer는 운영 측 주소를 그대로 보존했습니다. 현재 판정기 `RULE_IDS`에는 실제 구현한 `device_registered`와 `step_up_required`를 기록합니다. 7단계 변경의 실제 배포 반영 여부는 미확인입니다.
 
 사용자는 A의 기존 네 메모·B 시험 메모 목록 분리, 실제 A 임시 메모 추가·조회·수정·삭제와 B의 A UUID 조회 404를 확인했습니다. SQL 결과 화면에서 anon 권한 전체 false, authenticated CRUD만 true 및 소유자 정책 4개를 확인했습니다. 실제 상대 메모 수정·삭제 거부와 소유자 변경 거부는 로컬 가상 요청 테스트 통과이며, 도구의 인증된 배포 CRUD·교차 접근 자기 점검과 사용자 역할의 직접 DB RLS 시험은 미실행입니다.
 
@@ -44,6 +44,14 @@ aleph.config.json은 step 6, 실제 GitHub·배포 주소, Supabase issuer/JWKS/
 `npm run bundle`은 깨끗한 커밋과 로컬 bundle-notes.json이 필요하며 artifacts/submission.json을 생성합니다. 두 JSON 파일은 커밋하지 않습니다. 새 배포 후 결과를 다시 생성할 수 있습니다. GitHub main 푸시는 연결된 Vercel Production 빌드를 시작합니다.
 
 5단계 확인: 사용자는 직접 권한 회수 후에도 A의 본인 CRUD 성공과 상대 UUID 조회 404를 확인했습니다. 도구도 has_table_privilege의 8개 테이블 권한을 읽기 전용 조회하여 anon·authenticated 모두 권한이 없음을 확인했습니다. 브라우저의 Supabase 사용은 Auth에 한정되며 메모 CRUD는 서버 함수만 호출합니다. 서버 전용 설정과 API 소유자 검사는 유지됩니다. 사용자 JWT로 원본 REST API에 직접 요청하는 시험은 미실행입니다. 원본의 무인증 요청 거부는 JWT를 사용한 직접 접근 차단의 증거로 간주하지 않습니다.
+
+## 7단계 저장점: 재로그인 계약 확인과 가상 시험
+
+현재 제공된 `docs/DECIDER_REQUEST.md`의 v1 계약에는 `stepUp.verified`와 `authAgeSeconds`가 있으나, 같은 주체가 추가 확인 요청 이후 새로 로그인했음을 보장하는 계약은 없습니다. 문서는 이 값만으로 재인증 확인 요청을 건너뛰지 말라고 명시합니다. 문서가 참조하는 `student-kit/sdp-core/decision-contract.mjs` 엔진 구현은 이 저장소에 없어 실제 재로그인 처리까지 확인하지 못했습니다.
+
+가상 사건 재실행: `npm run fixture:7`. 이번 셸에서는 npm 대신 Node.js로 같은 스크립트를 직접 실행했습니다. 정상 사건 `allow`, 복합 이상 사건 `step_up`을 확인했습니다. 같은 가상 주체의 `stepUp.verified`를 false와 true로 각각 넣어도 복합 이상 사건은 `step_up`·`step_up_required`를 유지했습니다. 이 표시는 새 로그인 증거로 취급하지 않습니다. 현재 규칙은 `device_registered`와 `step_up_required`입니다.
+
+실제 자료 차단, 재인증 화면 연결, 같은 사용자 새 로그인 확인 및 이후 요청 재판정은 **미실행**입니다. 이번 확인은 가상 요청 시험이며 실제 심판 판정이 아닙니다. 화면에서 누를 곳은 없으며 터미널 출력을 확인합니다. 토큰 원문은 사용하거나 기록하지 않았습니다. 기존 `npm run decider:test`의 재확인 사건은 verified 값만으로 allow를 기대하므로 현재 계약에 따른 추가 확인 유지 동작과 다릅니다. 이번에는 해당 연습 파일을 변경하거나 실행하지 않았습니다.
 
 ## 보너스 xdr-01 저장점
 

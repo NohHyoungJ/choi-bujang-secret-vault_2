@@ -12,7 +12,7 @@ export async function runAttackChecks(config) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
-  if ([3, 4, 5, 6].includes(config.step)) {
+  if ([3, 4, 5, 6, 7].includes(config.step)) {
     const attempts = [];
     const cases = [
       ['anonymous_list', 'GET', '/api/learning-notes'],
@@ -66,6 +66,26 @@ export async function runAttackChecks(config) {
       }
       attempts.push({ attackId: 'original_authenticated_access', expected: '사용자 JWT로 원본 메모 API 직접 CRUD 거부',
         observed: '사용자 JWT를 이용한 원본 API 직접 접근 자기 점검은 미실행.' });
+    }
+    if (config.step === 7) {
+      const { fixtureRequests } = await import('../scripts/fixture-7.mjs');
+      const { decide } = await import('./decider.mjs');
+      const { normal, suspicious } = fixtureRequests();
+      for (const [attackId, request, expected] of [
+        ['virtual_normal_access', normal, '가상 정상 요청: allow · approved'],
+        ['virtual_unusual_access', suspicious, '가상 복합 이상 요청: step_up · step_up_required'],
+        ['virtual_unregistered_device', { ...normal, deviceRegistered: false },
+          '가상 미등록 기기: deny · device_not_registered'],
+        ['virtual_verified_flag', { ...suspicious, stepUp: { verified: true, authAgeSeconds: 60 } },
+          '검증 표시만으로 새 로그인을 인정하지 않음: step_up · step_up_required'],
+      ]) {
+        const result = await decide(request);
+        attempts.push({ attackId, expected,
+          observed: `로컬 가상 요청 결과: ${result.decision} · ${result.reasonCode}. 실제 접속·심판 판정 아님.` });
+      }
+      attempts.push({ attackId: 'live_step_up_reauthentication',
+        expected: '같은 사용자 새 로그인 확인 전 자료 차단, 새 로그인 후 요청 재판정',
+        observed: '미실행. 제공 계약에 추가 확인 이후 같은 사용자 새 로그인을 보장하는 정보가 없으며 실제 재인증 연결도 확인하지 못함.' });
     }
     return attempts;
   }

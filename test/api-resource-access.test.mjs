@@ -75,6 +75,10 @@ test('직접 API 요청의 저장된 소유자·강사 권한과 구역 격리',
         'fixture-B', method, { title: 'Synthetic', body: 'Synthetic', role: 'instructor' });
       assert.equal(result.status, 404);
       assert.deepEqual(result.body, { error: 'NOTE_NOT_FOUND' });
+      const normal = await invoke(`/api/learning-notes/${noteId}`, 'fixture-A');
+      assert.equal(normal.status, 200, 'B 요청 거부 뒤에도 A의 정상 조회 유지');
+      assert.equal(normal.body.id, noteId);
+      assert.equal(normal.body.title, 'Synthetic', 'B의 수정·삭제가 A의 자료에 영향을 주지 않음');
     }
     assert.equal(state.rows[0].owner_id, a);
     state.bypassOwner = true;

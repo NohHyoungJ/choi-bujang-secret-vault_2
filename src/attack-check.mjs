@@ -12,7 +12,7 @@ export async function runAttackChecks(config) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
-  if ([3, 4, 5, 6, 7, 8, 9].includes(config.step)) {
+  if ([3, 4, 5, 6, 7, 8, 9, 10].includes(config.step)) {
     const attempts = [];
     const cases = [
       ['anonymous_list', 'GET', '/api/learning-notes'],
@@ -190,6 +190,68 @@ export async function runAttackChecks(config) {
         observed: `로컬 가상 요청: ${previous.join(', ')}. 심판 판정 아님.` });
       attempts.push({ attackId: 'live_device_revocation', expected: '실제 사건 전달·기기 한 개의 권한 회수·회수 시간은 심판 확인',
         observed: '미실행. 운영 엔진의 사건 전달·회수 집행은 미연결이며 회수 API·기기 권한 변경·회수 시간 측정을 실행하지 않음. 실제 강사 계정·재인증 연결도 미실행.' });
+    }
+    if (config.step === 10) {
+      const { createHash } = await import('node:crypto');
+      const { previewRestore } = await import('./restore-preview.mjs');
+      const { planTestRestore, prepareTestRestore } = await import('./restore-test-policy.mjs');
+      const { verifiedBackupNote, noteContentHash } = await import('./restore-note.mjs');
+      const hash = text => createHash('sha256').update(text).digest('hex');
+      const safe = { schema: 'aleph.test-policy.v1', environment: 'test', version: 'synthetic-safe',
+        allowedRoutes: ['GET /api/notes/:id'], ruleIds: ['device_registered'] };
+      const current = { ...safe, version: 'synthetic-current', allowedRoutes: ['GET /api/notes'], ruleIds: [] };
+      const backupText = JSON.stringify(safe);
+      const verificationText = JSON.stringify({ schema: 'aleph.test-policy-verification.v1', environment: 'test',
+        backupVersion: safe.version, backupSha256: hash(backupText), result: 'passed',
+        verifiedAt: '2026-10-01T00:00:00.000Z', incidentAt: '2026-10-02T00:00:00.000Z' });
+      const input = { backupText, currentText: JSON.stringify(current), verificationText,
+        trustedVerificationSha256: hash(verificationText) };
+      const preview = previewRestore(input);
+      attempts.push({ attackId: 'synthetic_restore_preview', expected: '합성 사본 검증 뒤 복원 버전·차이만 표시',
+        observed: `로컬 합성 결과: ${preview.mode}, 대상 버전 ${preview.restoreVersion}, 변경 구역 ${preview.changes.length}개. 실제 사본 검증 아님.` });
+      const state = { schema: 'aleph.test-policy-store.v1', environment: 'test', services: { vault: current, other: safe },
+        auditHistory: [{ action: 'synthetic_old_audit' }] };
+      const storeText = JSON.stringify(state);
+      const plan = planTestRestore({ ...input, storeText, serviceId: 'vault' });
+      const restored = prepareTestRestore({ ...input, storeText, serviceId: 'vault', confirmedPlanSha256: plan.planSha256 });
+      const after = JSON.parse(restored.storeText);
+      attempts.push({ attackId: 'synthetic_restore_scope', expected: '선택 시험 서비스만 복원, 다른 서비스·기존 감사 보존',
+        observed: `로컬 합성 결과: 정책 일치=${JSON.stringify(after.services.vault) === backupText}, 다른 서비스 보존=${JSON.stringify(after.services.other) === JSON.stringify(state.services.other)}, 기존 감사 보존=${JSON.stringify(after.auditHistory.slice(0, -1)) === JSON.stringify(state.auditHistory)}. 실제 적용 아님.` });
+      const denied = [];
+      for (const candidate of [{ ...input, backupText: undefined }, { ...input, backupText: backupText + ' ' }]) {
+        try { previewRestore(candidate); denied.push('예상 밖 허용'); }
+        catch (error) { denied.push(error.message); }
+      }
+      attempts.push({ attackId: 'synthetic_restore_guards', expected: '사본 누락·변조 중단',
+        observed: `로컬 합성 결과: ${denied.join(', ')}. 실제 사본 아님.` });
+      const note = { id: '00000000-0000-4000-8000-000000000003', ownerId: '00000000-0000-4000-8000-000000000002',
+        title: 'Synthetic B', body: 'Synthetic fixture only' };
+      note.contentSha256 = noteContentHash(note);
+      const noteBackup = JSON.stringify({ schema: 'aleph.synthetic-note-backup.v1', environment: 'test', notes: [note] });
+      const selected = verifiedBackupNote({ backupText: noteBackup, trustedBackupSha256: hash(noteBackup),
+        id: note.id, ownerId: note.ownerId });
+      attempts.push({ attackId: 'synthetic_note_backup', expected: '합성 B 사본의 지정 한 건 ID·소유자·내용 해시 일치',
+        observed: `로컬 합성 사본 선택: ID 일치=${selected.id === note.id}, 소유자 일치=${selected.ownerId === note.ownerId}, 해시 일치=${noteContentHash(selected) === note.contentSha256}. DB 복원 실행 아님.` });
+      const { fixtureRequests } = await import('../scripts/fixture-7.mjs');
+      const { decide } = await import('./decider.mjs');
+      const { normal } = fixtureRequests();
+      const normalResult = await decide(normal);
+      const deniedResult = await decide({ ...normal, deviceRegistered: false });
+      attempts.push({ attackId: 'virtual_previous_access', expected: '가상 정상 allow, 미등록 deny',
+        observed: `로컬 가상 요청: ${normalResult.decision}/${normalResult.reasonCode}, ${deniedResult.decision}/${deniedResult.reasonCode}. 복구 뒤 실제 재검사 아님.` });
+      for (const [attackId, method, expectedStatus] of [
+        ['anonymous_restore_note', 'POST', 401], ['restore_note_wrong_method', 'GET', 405]]) {
+        try {
+          const response = await fetch(new URL(config.restoreRoute, app), {
+            method, redirect: 'error', signal: AbortSignal.timeout(10000),
+          });
+          attempts.push({ attackId, expected: `복원 API HTTP ${expectedStatus}, 복원 실행 없음`,
+            observed: `HTTP ${response.status} · ${response.status === expectedStatus ? '거부 상태 확인' : '예상한 거부 상태와 다름'}. 실제 B 복원 시험 아님.` });
+          await response.body?.cancel();
+        } catch { attempts.push({ attackId, expected: `복원 API HTTP ${expectedStatus}`, observed: '요청 실패: 응답 확인 불가' }); }
+      }
+      attempts.push({ attackId: 'live_restore_and_regression', expected: '실제 시험 정책·B 메모 복구 및 복구 뒤 1~9단계 정상·금지 재검사',
+        observed: '미실행. 실제 안전 정책 사본·검증 기록·비공개 B 사본·B 서버 설정이 없음. 실제 정책·DB 복원·인증 A/B 재검사·기기 회수와 시간 확인은 수행하지 않음.' });
     }
     return attempts;
   }

@@ -12,7 +12,7 @@ export async function runAttackChecks(config) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
-  if ([3, 4, 5, 6, 7].includes(config.step)) {
+  if ([3, 4, 5, 6, 7, 8].includes(config.step)) {
     const attempts = [];
     const cases = [
       ['anonymous_list', 'GET', '/api/learning-notes'],
@@ -86,6 +86,57 @@ export async function runAttackChecks(config) {
       attempts.push({ attackId: 'live_step_up_reauthentication',
         expected: '같은 사용자 새 로그인 확인 전 자료 차단, 새 로그인 후 요청 재판정',
         observed: '미실행. 제공 계약에 추가 확인 이후 같은 사용자 새 로그인을 보장하는 정보가 없으며 실제 재인증 연결도 확인하지 못함.' });
+    }
+    if (config.step === 8) {
+      const { fixtureRequests } = await import('../scripts/fixture-7.mjs');
+      const { decide } = await import('./decider.mjs');
+      const { normal, suspicious } = fixtureRequests();
+      const virtual = (service, method, path, route, extra = {}) => ({
+        ...normal, service, method, path, route, ...extra,
+      });
+      const groups = [
+        ['virtual_notes_scope', '가상 개별 메모 allow, 전체 목록·export·쿼리 요청 deny', [normal,
+          virtual('notes', 'GET', '/notes', 'GET /notes'),
+          virtual('notes', 'GET', '/notes/export', 'GET /notes/:id'),
+          { ...normal, queryLength: 12 }]],
+        ['virtual_notice_scope', '가상 공지 GET allow, POST·PUT·PATCH·DELETE deny',
+          ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(method =>
+            virtual('notices', method, '/api/instructor-notices/demo', `${method} /api/instructor-notices/:id`))],
+        ['virtual_instructor_scope', '가상 강사 자료·알 수 없는 서비스 deny', [
+          virtual('instructor_materials', 'GET', '/api/instructor-materials/demo', 'GET /api/instructor-materials/:id'),
+          { ...normal, service: 'unknown' }]],
+        ['virtual_previous_rules', '기존 가상 정상 allow·미등록 deny·복합 이상 step_up·재확인 allow', [normal,
+          { ...normal, deviceRegistered: false }, suspicious,
+          { ...suspicious, stepUp: { verified: true, authAgeSeconds: 60 } }]],
+        ['virtual_route_binding', '가상 서비스·route 불일치 deny', [
+          { ...normal, service: 'notices' }, { ...normal, route: 'GET /notes' }]],
+      ];
+      for (const [attackId, expected, requests] of groups) {
+        const results = [];
+        for (const request of requests) {
+          const result = await decide(request);
+          results.push(`${result.decision}/${result.reasonCode}`);
+        }
+        attempts.push({ attackId, expected, observed: `로컬 가상 요청: ${results.join(', ')}. 심판 판정 아님.` });
+      }
+      for (const [attackId, method, path, expectedStatus] of [
+        ['anonymous_instructor_materials', 'GET', '/api/instructor-materials', 401],
+        ['direct_notice_write', 'POST', '/api/instructor-notices', 405],
+      ]) {
+        try {
+          const response = await fetch(new URL(path, app), {
+            method, redirect: 'error', signal: AbortSignal.timeout(10000),
+          });
+          attempts.push({ attackId, expected: `직접 API 요청 HTTP ${expectedStatus}, 자료 반환 없음`,
+            observed: `HTTP ${response.status} · ${response.status === expectedStatus ? '거부 상태 확인' : '예상한 거부 상태와 다름'}. 인증된 강사 권한 시험 아님.` });
+          await response.body?.cancel();
+        } catch {
+          attempts.push({ attackId, expected: `직접 API 요청 HTTP ${expectedStatus}`, observed: '요청 실패: 응답 확인 불가' });
+        }
+      }
+      attempts.push({ attackId: 'live_instructor_authorization',
+        expected: '저장된 강사 권한 재조회, 일반 사용자 403, 강사는 미구현 저장소 501',
+        observed: '실제 인증 계정의 강사 경로·권한 회수 시험과 실제 재인증 연결은 미실행. API 권한 분기는 대역을 사용한 로컬 모의 시험만 통과.' });
     }
     return attempts;
   }

@@ -1,6 +1,6 @@
-# BYTE BACK 자료실 · 7단계 저장점
+# BYTE BACK 자료실 · 8단계 저장점
 
-처음 확인한 로그인 자료실은 2단계, 메모 CRUD 추가는 3단계이며, 4단계에서 API 소유자 검사·RLS를 추가했고, 이번 5단계에서는 브라우저 자료 호출이 서버 함수를 통하는지 확인하고 원본 DB 직접 권한을 회수했습니다.
+로그인 자료실과 메모 CRUD에 API 소유자 검사·RLS·원본 DB 직접 권한 회수를 추가했습니다. 6~7단계의 기기·가상 추가 확인 규칙에 이어, 8단계에서는 자료 구역 규칙과 API의 저장된 권한 재확인을 구현했습니다.
 
 ## 현재 기능
 
@@ -13,7 +13,7 @@
 - 학습 DB의 RLS 정책은 authenticated의 SELECT·DELETE에 USING, INSERT에 WITH CHECK, UPDATE에 둘 다 auth.uid() = owner_id를 적용합니다. 4단계에서는 authenticated CRUD를 허용했으나 5단계에서는 PUBLIC·anon·authenticated의 메모 테이블 직접 권한을 회수했습니다. RLS 정책은 보존했습니다.
 - 기존 가상 메모 4개와 숫자 기본키를 보존하고, API용 UUID note_id 컬럼을 추가했습니다. 본인 소유가 아닌 기존 메모는 본인 목록에 나오지 않습니다.
 - 공개 data.json에는 notes 빈 배열만 있습니다. 빌드는 메모 본문이 들어 있는 정적 JSON을 거부합니다.
-- AI·침해 정보 API는 501 시작 틀이며, 판정기는 `device_registered`와 가상 복합 이상 접속에 추가 확인을 요청하는 `step_up_required` 규칙을 구현하고 탐지기는 관찰만 합니다. 실제 재인증 연결은 미실행입니다.
+- AI·침해 정보 API는 501 시작 틀이며, 판정기는 `device_registered`, `step_up_required`, `resource_scope` 규칙을 구현하고 탐지기는 관찰만 합니다. 실제 재인증 연결은 미실행입니다.
 
 ## 다시 실행하고 확인하기
 
@@ -35,7 +35,7 @@ UUID 컬럼 마이그레이션 `supabase/migrations/202610120001_notes_uuid.sql`
 
 ## 설정과 검증 범위
 
-aleph.config.json은 step 7, 기존 GitHub·배포 주소, Supabase issuer/JWKS/audience, GET·POST·PUT·DELETE 경로를 구현과 대조해 기록합니다. originalApiUrl은 쿼리 없는 https://eqfkncijzfsatalbhmij.supabase.co/rest/v1/learning_notes 입니다. judgeIssuer는 운영 측 주소를 그대로 보존했습니다. 현재 판정기 `RULE_IDS`에는 실제 구현한 `device_registered`와 `step_up_required`를 기록합니다. 7단계 변경의 실제 배포 반영 여부는 미확인입니다.
+aleph.config.json은 step 8, 기존 GitHub·배포 주소, Supabase issuer/JWKS/audience, GET·POST·PUT·DELETE 경로를 구현과 대조해 기록합니다. originalApiUrl은 쿼리 없는 https://eqfkncijzfsatalbhmij.supabase.co/rest/v1/learning_notes 입니다. judgeIssuer는 운영 측 주소를 그대로 보존했습니다. 현재 판정기 `RULE_IDS`에는 실제 구현한 `device_registered`, `step_up_required`, `resource_scope`를 기록합니다. 8단계 실제 배포·심판 확인 결과는 아래 검증 범위를 따릅니다.
 
 사용자는 A의 기존 네 메모·B 시험 메모 목록 분리, 실제 A 임시 메모 추가·조회·수정·삭제와 B의 A UUID 조회 404를 확인했습니다. SQL 결과 화면에서 anon 권한 전체 false, authenticated CRUD만 true 및 소유자 정책 4개를 확인했습니다. 실제 상대 메모 수정·삭제 거부와 소유자 변경 거부는 로컬 가상 요청 테스트 통과이며, 도구의 인증된 배포 CRUD·교차 접근 자기 점검과 사용자 역할의 직접 DB RLS 시험은 미실행입니다.
 
@@ -49,9 +49,21 @@ aleph.config.json은 step 7, 기존 GitHub·배포 주소, Supabase issuer/JWKS/
 
 현재 제공된 `docs/DECIDER_REQUEST.md`의 v1 계약에는 `stepUp.verified`와 `authAgeSeconds`가 있으나, 같은 주체가 추가 확인 요청 이후 새로 로그인했음을 보장하는 계약은 없습니다. 문서는 이 값만으로 재인증 확인 요청을 건너뛰지 말라고 명시합니다. 문서가 참조하는 `student-kit/sdp-core/decision-contract.mjs` 엔진 구현은 이 저장소에 없어 실제 재로그인 처리까지 확인하지 못했습니다.
 
-가상 사건 재실행: `npm run decider:test`。 이번 셸에서는 npm 대신 Node.js로 같은 스크립트를 직접 실행해 네 항목 통과를 확인했습니다. 정상 요청은 `allow`, 복합 이상 사건은 확인 전 `step_up`·`step_up_required`입니다. `judge_fixture` 가상 요청에서 `stepUp.verified`가 true이고 `authAgeSeconds`가 유한한 0~900초이면 재확인 완료로 처리해 `allow`를 반환합니다. 누락·잘못된 값·만료는 추가 확인을 유지하며 미등록 기기는 재확인 여부와 관계없이 `deny`·`device_not_registered`입니다. 가상 재확인 결과는 실제 새 로그인 증거로 취급하지 않습니다. 현재 규칙은 `device_registered`와 `step_up_required`입니다.
+가상 사건 재실행: `npm run decider:test`. 이번 셸에서는 npm 대신 Node.js로 같은 스크립트를 직접 실행해 네 항목 통과를 확인했습니다. 정상 요청은 `allow`, 복합 이상 사건은 확인 전 `step_up`·`step_up_required`입니다. `judge_fixture` 가상 요청에서 `stepUp.verified`가 true이고 `authAgeSeconds`가 유한한 0~900초이면 재확인 완료로 처리해 `allow`를 반환합니다. 누락·잘못된 값·만료는 추가 확인을 유지하며 미등록 기기는 재확인 여부와 관계없이 `deny`·`device_not_registered`입니다. 가상 재확인 결과는 실제 새 로그인 증거로 취급하지 않습니다. 현재 규칙은 `device_registered`와 `step_up_required`입니다.
 
 실제 자료 차단, 재인증 화면 연결, 같은 사용자 새 로그인 확인 및 이후 요청 재판정은 **미실행**입니다. 이번 확인은 가상 요청 시험이며 실제 심판 판정이 아닙니다. 화면에서 누를 곳은 없으며 터미널 출력을 확인합니다. 토큰 원문은 사용하거나 기록하지 않았습니다. `npm run fixture:7`에 해당하는 스크립트도 직접 실행해 정상 `allow`와 복합 이상 `step_up`을 확인했습니다. 재확인 실패 수정을 커밋한 뒤 심판 화면에서 해당 커밋을 선택해 7단계를 다시 검사합니다. 실제 심판 재검사 결과는 아직 미확인입니다.
+
+## 8단계 저장점: 자료 구역과 API 권한
+
+판정기는 `device_registered`, `step_up_required`, `resource_scope` 세 규칙을 구현합니다. 서비스·메서드·정확한 path·route를 함께 검사합니다. 메모는 개별 ID 경로의 GET·PUT·DELETE만 허용하며 전체 목록·생성·export·쿼리 요청은 거부합니다. 공지는 GET만, 모든 공지 쓰기·강사 자료·알 수 없는 경로는 거부합니다. 메모 소유자 비교는 API에 남겨 두었습니다. 상세 경로 표는 `docs/RESOURCE_IDS.md`에 있습니다.
+
+API는 기존 메모 자료·주소·화면 메뉴를 보존합니다. 메모 DB 소유자 필터에 더해 반환 행의 owner_id를 재대조합니다. 강사 자료와 공지 관리 경로에서는 Auth의 저장된 app_metadata.role이 instructor인지 매 요청마다 서버에서 조회합니다. 사용자 입력의 role이나 user_metadata는 권한으로 쓰지 않습니다. 거부 로그에는 고정 사유 코드만 남깁니다. 공지·강사 자료 저장소와 실제 공지 수정 기능은 미구현이며, 강사 권한을 확인해도 501입니다.
+
+재실행: `node --test test/decider-resource.test.mjs test/api-resource-access.test.mjs`. 제공 Node.js로 실행해 가상 구역 검사와 직접 API 호출 모의 시험이 통과했습니다. `npm run decider:test`에 해당하는 스크립트도 직접 실행해 기존 네 항목 통과를 확인했습니다. 화면 조작 없이 터미널 결과를 확인합니다. 가상 개별 메모·공지 GET은 allow, 메모 목록·공지 쓰기·강사 자료는 deny여야 합니다. API 모의 시험에서 본인 메모 200, 타인 메모 404, 위조 강사 역할 403, 저장된 권한 회수 즉시 거부를 확인했습니다. 실제 계정·토큰·서명 키를 만들거나 사용하지 않았습니다.
+
+aleph.config.json은 step 8이며 allowedRoutes 15개가 판정기의 명시적 허용 조합과 일치하는지 검사했습니다. 자료 API 전체 목록·생성 기능은 보존하지만 판정기 경유 허용 목록에서는 제외합니다. 연습용 경로를 등록하는 것만으로 실제 API가 추가되지는 않습니다. 기존 배포 주소·로그인 발급자·원본 API는 구현과 대조했고 judgeIssuer는 보존했습니다. RULE_IDS에는 구현한 세 규칙만 있습니다. 운영 등록부의 resource_not_allowed 사유 코드와 notices 서비스 이름 일치 여부는 미확인입니다.
+
+`npm run bundle`은 실제 배포 무인증 요청과 로컬 가상 판정 결과를 구분해 기록합니다. 실제 인증 계정의 강사 권한·회수·A/B 교차 접근과 사용자 JWT 원본 DB 시험, 실제 재인증 연결은 미실행입니다. 심판 화면에서는 8단계 저장점 커밋을 선택해 다시 검사합니다. 로컬 시험과 HTTP 자기 점검은 실제 심판 통과 증거가 아닙니다.
 
 ## 보너스 xdr-01 저장점
 

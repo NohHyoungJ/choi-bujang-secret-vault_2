@@ -1,6 +1,31 @@
 // ALEPH SDP 엔진이 확인한 요청만 받으며, 등록된 기기 요청만 허용합니다.
 // 요청 본문의 userId, role, 기기 키, 토큰을 별도로 믿거나 저장하지 마세요.
-export const RULE_IDS = Object.freeze(['device_registered', 'step_up_required']);
+export const RULE_IDS = Object.freeze(['device_registered', 'step_up_required', 'resource_scope']);
+
+// 기존 API 주소와 제공 연습의 경로를 각각 명시합니다. 접두사 일치로 허용하지 않습니다.
+const NOTE_PATHS = ['/api/learning-notes', '/api/notes', '/notes'];
+const NOTICE_PATHS = ['/api/instructor-notices', '/api/notices', '/notices'];
+
+function allowedResource(request) {
+  if (request?.queryLength !== 0 || typeof request.path !== 'string') return false;
+  const { service, method, path, route } = request;
+  const paths = service === 'notes' ? NOTE_PATHS : service === 'notices' ? NOTICE_PATHS : [];
+  for (const base of paths) {
+    // 공지 목록도 읽기만 허용합니다. 역할이나 사용자 주장으로 쓰기를 열지 않습니다.
+    if (service === 'notices' && method === 'GET'
+        && path === base && route === `GET ${base}`) return true;
+    const methods = service === 'notes' ? ['GET', 'PUT', 'DELETE'] : ['GET'];
+    if (!methods.includes(method) || route !== `${method} ${base}/:id`
+        || !path.startsWith(`${base}/`)) continue;
+    let id;
+    try { id = decodeURIComponent(path.slice(base.length + 1)); } catch { continue; }
+    // ID는 UUID로 제한하지 않습니다. 기능·목록·중첩·경로 변조는 허용하지 않습니다.
+    if (id && !/[\/\\?#%\s\u0000-\u001f\u007f]/u.test(id)
+        && id !== '.' && id !== '..' && id.toLowerCase() !== 'export') return true;
+  }
+  // 강사 자료·관리 경로·알 수 없는 서비스/경로는 모두 제외됩니다.
+  return false;
+}
 
 // 엔진 요청 계약의 입력만 검사합니다. 가상 신호는 실제 위치 증거가 아닙니다.
 // null은 누락·출처 불명·잘못된 형식이며, 정상값으로 대체하지 않습니다.
@@ -35,6 +60,7 @@ export function inspectConnectionInput(request) {
 
 export async function decide(request) {
   const registered = request?.deviceRegistered === true;
+  const resourceAllowed = allowedResource(request);
   const connection = inspectConnectionInput(request);
   // 평소 접속 이력은 계약에 없으므로 기존 가상 사건의 야간 기준을 사용합니다.
   // risk_signal은 가상 사건의 대량 접근 신호이며 실제 읽기 이력으로 간주하지 않습니다.
@@ -54,9 +80,13 @@ export async function decide(request) {
   return {
     schema: 'aleph.decision.v1',
     requestId: request.requestId,
-    decision: !registered ? 'deny' : needsStepUp ? 'step_up' : 'allow',
+    decision: !registered || !resourceAllowed ? 'deny' : needsStepUp ? 'step_up' : 'allow',
     reasonCode: !registered ? 'device_not_registered'
+      : !resourceAllowed ? 'resource_not_allowed'
       : needsStepUp ? 'step_up_required' : 'approved',
-    ruleIds: needsStepUp ? ['device_registered', 'step_up_required'] : ['device_registered'],
+    ruleIds: !registered ? ['device_registered']
+      : !resourceAllowed ? ['resource_scope']
+      : needsStepUp ? ['device_registered', 'resource_scope', 'step_up_required']
+      : ['device_registered', 'resource_scope'],
   };
 }

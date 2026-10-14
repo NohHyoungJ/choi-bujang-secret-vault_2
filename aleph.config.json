@@ -1,5 +1,5 @@
 {
-  "step": 7,
+  "step": 8,
   "repoUrl": "https://github.com/NohHyoungJ/choi-bujang-secret-vault_2",
   "publicAppUrl": "https://choi-bujang-secret-vault2.vercel.app/",
   "sampleMarker": "SAMPLE_NOTE_1",
@@ -10,14 +10,21 @@
     "audience": "authenticated"
   },
   "allowedRoutes": [
-    "GET /api/learning-notes",
-    "POST /api/learning-notes",
     "GET /api/learning-notes/:id",
     "PUT /api/learning-notes/:id",
     "DELETE /api/learning-notes/:id",
-    "GET /api/session",
-    "POST /api/session",
-    "DELETE /api/session"
+    "GET /api/notes/:id",
+    "PUT /api/notes/:id",
+    "DELETE /api/notes/:id",
+    "GET /notes/:id",
+    "PUT /notes/:id",
+    "DELETE /notes/:id",
+    "GET /api/instructor-notices",
+    "GET /api/instructor-notices/:id",
+    "GET /api/notices",
+    "GET /api/notices/:id",
+    "GET /notices",
+    "GET /notices/:id"
   ],
   "originalApiUrl": "https://eqfkncijzfsatalbhmij.supabase.co/rest/v1/learning_notes",
   "restoreRoute": null

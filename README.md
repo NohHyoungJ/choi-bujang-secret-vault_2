@@ -49,9 +49,9 @@ aleph.config.json은 step 7, 기존 GitHub·배포 주소, Supabase issuer/JWKS/
 
 현재 제공된 `docs/DECIDER_REQUEST.md`의 v1 계약에는 `stepUp.verified`와 `authAgeSeconds`가 있으나, 같은 주체가 추가 확인 요청 이후 새로 로그인했음을 보장하는 계약은 없습니다. 문서는 이 값만으로 재인증 확인 요청을 건너뛰지 말라고 명시합니다. 문서가 참조하는 `student-kit/sdp-core/decision-contract.mjs` 엔진 구현은 이 저장소에 없어 실제 재로그인 처리까지 확인하지 못했습니다.
 
-가상 사건 재실행: `npm run fixture:7`. 이번 셸에서는 npm 대신 Node.js로 같은 스크립트를 직접 실행했습니다. 정상 사건 `allow`, 복합 이상 사건 `step_up`을 확인했습니다. 같은 가상 주체의 `stepUp.verified`를 false와 true로 각각 넣어도 복합 이상 사건은 `step_up`·`step_up_required`를 유지했습니다. 이 표시는 새 로그인 증거로 취급하지 않습니다. 현재 규칙은 `device_registered`와 `step_up_required`입니다.
+가상 사건 재실행: `npm run decider:test`。 이번 셸에서는 npm 대신 Node.js로 같은 스크립트를 직접 실행해 네 항목 통과를 확인했습니다. 정상 요청은 `allow`, 복합 이상 사건은 확인 전 `step_up`·`step_up_required`입니다. `judge_fixture` 가상 요청에서 `stepUp.verified`가 true이고 `authAgeSeconds`가 유한한 0~900초이면 재확인 완료로 처리해 `allow`를 반환합니다. 누락·잘못된 값·만료는 추가 확인을 유지하며 미등록 기기는 재확인 여부와 관계없이 `deny`·`device_not_registered`입니다. 가상 재확인 결과는 실제 새 로그인 증거로 취급하지 않습니다. 현재 규칙은 `device_registered`와 `step_up_required`입니다.
 
-실제 자료 차단, 재인증 화면 연결, 같은 사용자 새 로그인 확인 및 이후 요청 재판정은 **미실행**입니다. 이번 확인은 가상 요청 시험이며 실제 심판 판정이 아닙니다. 화면에서 누를 곳은 없으며 터미널 출력을 확인합니다. 토큰 원문은 사용하거나 기록하지 않았습니다. 기존 `npm run decider:test`의 재확인 사건은 verified 값만으로 allow를 기대하므로 현재 계약에 따른 추가 확인 유지 동작과 다릅니다. 이번에는 해당 연습 파일을 변경하거나 실행하지 않았습니다.
+실제 자료 차단, 재인증 화면 연결, 같은 사용자 새 로그인 확인 및 이후 요청 재판정은 **미실행**입니다. 이번 확인은 가상 요청 시험이며 실제 심판 판정이 아닙니다. 화면에서 누를 곳은 없으며 터미널 출력을 확인합니다. 토큰 원문은 사용하거나 기록하지 않았습니다. `npm run fixture:7`에 해당하는 스크립트도 직접 실행해 정상 `allow`와 복합 이상 `step_up`을 확인했습니다. 재확인 실패 수정을 커밋한 뒤 심판 화면에서 해당 커밋을 선택해 7단계를 다시 검사합니다. 실제 심판 재검사 결과는 아직 미확인입니다.
 
 ## 보너스 xdr-01 저장점
 

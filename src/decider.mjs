@@ -45,7 +45,12 @@ export async function decide(request) {
     && connection.recentEvents.some(event => event.kind === 'risk_signal'
       && event.ageSeconds <= 60 && event.count >= 20);
   // 미등록 기기 거부가 우선이며 지역만으로 차단하지 않습니다.
-  const needsStepUp = registered && unusualAccess;
+  // 제공 연습의 가상 재확인 결과만 처리합니다. 실제 새 로그인 증거가 아닙니다.
+  const fixtureConfirmed = connection.signalSource === 'judge_fixture'
+    && request?.stepUp?.verified === true
+    && Number.isFinite(request.stepUp.authAgeSeconds)
+    && request.stepUp.authAgeSeconds >= 0 && request.stepUp.authAgeSeconds <= 900;
+  const needsStepUp = registered && unusualAccess && !fixtureConfirmed;
   return {
     schema: 'aleph.decision.v1',
     requestId: request.requestId,

@@ -77,7 +77,7 @@ export async function runAttackChecks(config) {
         ['virtual_unregistered_device', { ...normal, deviceRegistered: false },
           '가상 미등록 기기: deny · device_not_registered'],
         ['virtual_verified_flag', { ...suspicious, stepUp: { verified: true, authAgeSeconds: 60 } },
-          '검증 표시만으로 새 로그인을 인정하지 않음: step_up · step_up_required'],
+          '유효한 가상 재확인 완료: allow · approved. 실제 새 로그인 증거 아님.'],
       ]) {
         const result = await decide(request);
         attempts.push({ attackId, expected,

@@ -139,7 +139,7 @@ export async function runAttackChecks(config) {
         observed: '실제 인증 계정의 강사 경로·권한 회수 시험과 실제 재인증 연결은 미실행. API 권한 분기는 대역을 사용한 로컬 모의 시험만 통과.' });
     }
     if (config.step === 9) {
-      const { detect } = await import('./detect.mjs');
+      const { detectFixture: detect } = await import('./detect.mjs');
       const reads = (count, { network = 'unusual', verified = false, source = 'judge_fixture',
         id = 'a'.repeat(16), subject = 'learner_fixture', interval = 2000 } = {}) =>
         Array.from({ length: count }, (_, index) => ({

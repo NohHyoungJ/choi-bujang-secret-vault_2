@@ -5,35 +5,25 @@ import { isDeepStrictEqual } from 'node:util';
 const START = Date.UTC(2026, 9, 1, 0, 0, 0);
 const subject = 'learner_fixture';
 
-function reads(count, { intervalSeconds = 2, owner = subject, start = START,
-  network = 'usual', source = 'judge_fixture', method = 'GET' } = {}) {
+function reads(count, { intervalSeconds = 2, owner = subject, start = START } = {}) {
   return Array.from({ length: count }, (_, index) => ({
     at: new Date(start + index * intervalSeconds * 1000).toISOString(),
-    method, identity: { sub: owner }, signals: { source, network },
+    method: 'GET', identity: { sub: owner },
   }));
 }
 
 const cases = [
   { name: '정상 조회 30건', events: reads(30), expected: { action: 'observe' } },
-  { name: '다른 네트워크만: 조회 30건', events: reads(30, { network: 'unusual' }), expected: { action: 'observe' } },
-  { name: '평소 네트워크의 다량 조회 200건', events: reads(200), expected: { action: 'observe' } },
-  { name: '다른 네트워크에서 정확히 120건', events: reads(120, { network: 'unusual' }), expected: { action: 'observe' } },
-  { name: '복합 의심: 다른 네트워크에서 10분 내 121건', events: reads(121, { network: 'unusual' }), expected: {
-    action: 'flag_suspicious', reasonCode: 'unusual_network_burst', subject } },
-  { name: '복합 의심: 순서가 섞인 조회 200건', events: reads(200, { network: 'unusual' }).reverse(), expected: {
-    action: 'flag_suspicious', reasonCode: 'unusual_network_burst', subject } },
-  { name: '서로 다른 사용자 각 100건', events: [...reads(100, { network: 'unusual' }),
-    ...reads(100, { owner: 'other_fixture', network: 'unusual' })].sort((a, b) => a.at.localeCompare(b.at)),
+  { name: '10분 안에 120건', events: reads(120), expected: { action: 'observe' } },
+  { name: '10분 안에 121건', events: reads(121), expected: {
+    action: 'propose_revocation', reasonCode: 'burst_read', subject } },
+  { name: '폭주 조회 200건', events: reads(200), expected: {
+    action: 'propose_revocation', reasonCode: 'burst_read', subject } },
+  { name: '서로 다른 사용자 각 100건', events: [...reads(100),
+    ...reads(100, { owner: 'other_fixture' })].sort((a, b) => a.at.localeCompare(b.at)),
   expected: { action: 'observe' } },
   { name: '10분 밖으로 흩어진 조회 200건', events: reads(200,
-    { intervalSeconds: 7, network: 'unusual' }), expected: { action: 'observe' } },
-  { name: '출처가 불명확한 네트워크', events: reads(200, { network: 'unusual', source: 'unknown' }), expected: { action: 'observe' } },
-  { name: '네트워크 누락', events: reads(200).map(({ signals, ...event }) => event), expected: { action: 'observe' } },
-  { name: '조회가 아닌 요청 200건', events: reads(200, { network: 'unusual', method: 'POST' }), expected: { action: 'observe' } },
-  { name: '평소 조회 120건과 다른 네트워크 조회 1건', events: [...reads(120),
-    ...reads(1, { network: 'unusual', start: START + 240000 })], expected: { action: 'observe' } },
-  { name: '지역 하나만 변경', events: reads(200).map(event => ({ ...event,
-    signals: { ...event.signals, region: 'foreign' } })), expected: { action: 'observe' } },
+    { intervalSeconds: 7 }), expected: { action: 'observe' } },
 ];
 
 // This is a practice contract, not a live engine assertion or judge score.

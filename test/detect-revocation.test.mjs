@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detect } from '../src/detect.mjs';
+import { detectFixture as detect } from '../src/detect.mjs';
 
 const deviceA = 'a'.repeat(16);
 const deviceB = 'b'.repeat(16);

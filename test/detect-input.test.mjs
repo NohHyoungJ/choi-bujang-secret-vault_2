@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readDetectionEvents, detect } from '../src/detect.mjs';
+import { readDetectionEvents, detectFixture as detect } from '../src/detect.mjs';
 
 const events = count => Array.from({ length: count }, () => ({
   at: '2026-10-01T00:00:00.000Z', method: 'GET', identity: { sub: 'learner_fixture' },

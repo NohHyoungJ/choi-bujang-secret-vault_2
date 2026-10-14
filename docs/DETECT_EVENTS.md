@@ -1,6 +1,24 @@
 # 9단계 탐지 연습 사건 계약
 
-`npm run detect:test`는 학생이 작성한 `src/detect.mjs`의 `detect(events)`에 가상 조회 사건을 전달합니다. 원래 제공된 사건에는 `at`, `method`, `identity.sub`만 있었습니다. 학생의 요청으로 로컬 가상 사건에 아래 `signals`를 추가했습니다. 이는 운영 엔진의 계약 변경이나 실제 네트워크 검증을 의미하지 않습니다.
+`npm run detect:test`는 학생이 작성한 `src/detect.mjs`의 `detect(events)`에 가상 조회 사건을 전달합니다. 각 사건은 다음 세 값만 가집니다.
+
+```js
+{ at: '2026-10-01T00:00:00.000Z', method: 'GET', identity: { sub: 'learner_fixture' } }
+```
+
+같은 `identity.sub`의 `GET` 사건이 어느 10분 구간에서든 **120건을 넘을 때만** `{ action: 'propose_revocation', reasonCode: 'burst_read', subject: '해당 sub' }`를 돌려줍니다. 그 밖에는 `{ action: 'observe' }`입니다. 정확히 120건은 회수 제안 대상이 아닙니다. 다른 사용자의 사건을 합산하거나 10분 밖의 사건을 같은 묶음으로 세지 않습니다.
+
+이 파일의 사건 모양은 **로컬 연습용**입니다. 브라우저가 보낸 사용자 번호를 신원으로 취급하지 않습니다. 운영 반 엔진이 검증한 사건을 전달하고 회수 제안을 집행하는 경로는 별도로 연결·시험해야 합니다. 이 명령의 통과를 실제 접속 차단이나 심판 판정으로 표시하지 않습니다.
+
+## 제공 계약과 로컬 확장의 구분
+
+심판 호환을 위해 detect(events)는 위 원래 계약의 세 항목 응답을 유지합니다. 출처·기기 필드가 없는 원래 사건에 로컬 확장 필드를 필수로 요구하지 않습니다. 원래 계약의 subject는 가명 주체이며 실제 기기 ID가 아닙니다. 특정 기기와의 연결·회수 집행은 운영 엔진과 심판의 확인이 필요하며 코드가 임의 ID를 만들지 않습니다. 기존 decide(request)의 응답 다섯 항목도 변경하지 않습니다.
+
+학생이 승인한 네트워크·확인 기기 복합 조건과 중첩 revocationProposal은 아래 detectFixture(events)에 보존합니다. 이 로컬 전용 결과를 운영 탐지 계약의 응답으로 보고하지 않습니다.
+
+## 승인된 로컬 복합 사건 시험 계약
+
+`node scripts/detect-fixture-test.mjs`는 학생이 작성한 `src/detect.mjs`의 `detectFixture(events)`에 가상 조회 사건을 전달합니다. 원래 제공된 사건에는 `at`, `method`, `identity.sub`만 있었습니다. 학생의 요청으로 로컬 가상 사건에 아래 `signals`를 추가했습니다. 이는 운영 엔진의 계약 변경이나 실제 네트워크 검증을 의미하지 않습니다.
 
 ```js
 {
@@ -32,9 +50,9 @@
 입력 처리 확인: `node --test test/detect-input.test.mjs`.
 정상 30건과 의심 121건이 비밀값 없이 추출돼야 하며, 잘못된 입력은
 `invalid_detection_event`로 거부돼야 합니다. 화면 조작 없이 터미널 결과를 확인합니다.
-`readDetectionEvents`의 네 항목 추출은 유지하고, `detect` 내부에서 집계에 필요한 시각과 가상 네트워크 두 값만 추가로 읽습니다. 원본 객체를 출력하거나 저장하지 않습니다.
+`readDetectionEvents`의 네 항목 추출은 유지하고, `detectFixture` 내부에서 집계에 필요한 시각과 가상 네트워크 두 값만 추가로 읽습니다. 원본 객체를 출력하거나 저장하지 않습니다.
 
-복합 의심 시험: `npm run detect:test`. 정상 사건·단일 이상·경계값·사용자 분리·시간 분리·출처 누락은 observe, 다른 네트워크의 10분 내 121건 이상 조회만 flag_suspicious여야 합니다. 화면 조작 없이 터미널 결과를 확인합니다. 운영 반 엔진의 사건 전달·실제 네트워크 검증·권한 회수는 미연결·미실행입니다.
+복합 의심 시험: `node scripts/detect-fixture-test.mjs`. 정상 사건·단일 이상·경계값·사용자 분리·시간 분리·출처 누락은 observe, 다른 네트워크의 10분 내 121건 이상 조회만 flag_suspicious여야 합니다. 화면 조작 없이 터미널 결과를 확인합니다. 운영 반 엔진의 사건 전달·실제 네트워크 검증·권한 회수는 미연결·미실행입니다.
 
 ## 별도 가상 기기 회수 제안
 

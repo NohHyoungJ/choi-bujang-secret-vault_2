@@ -24,7 +24,36 @@ export function readDetectionEvents(events) {
   return safeEvents;
 }
 
+// 제공된 원래 탐지 계약의 응답입니다. 회수 제안만 반환하고 집행하지 않습니다.
 export function detect(events) {
+  const safeEvents = readDetectionEvents(events);
+  const readsBySubject = new Map();
+  for (let index = 0; index < events.length; index++) {
+    const { subjectId, requestKind } = safeEvents[index];
+    const at = events[index].at;
+    const timestamp = typeof at === 'string' ? Date.parse(at) : NaN;
+    if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString() !== at) {
+      throw new TypeError('invalid_detection_event');
+    }
+    if (requestKind !== 'GET') continue;
+    if (!readsBySubject.has(subjectId)) readsBySubject.set(subjectId, []);
+    readsBySubject.get(subjectId).push(timestamp);
+  }
+  for (const [subject, timestamps] of [...readsBySubject].sort(([a], [b]) => a.localeCompare(b))) {
+    timestamps.sort((a, b) => a - b);
+    let start = 0;
+    for (let end = 0; end < timestamps.length; end++) {
+      while (timestamps[end] - timestamps[start] > 10 * 60 * 1000) start++;
+      if (end - start + 1 > 120) {
+        return { action: 'propose_revocation', reasonCode: 'burst_read', subject };
+      }
+    }
+  }
+  return { action: 'observe' };
+}
+
+// 학생이 승인한 확장 계약은 로컬 복합 사건 시험에만 사용합니다.
+export function detectFixture(events) {
   const safeEvents = readDetectionEvents(events);
   const readsBySubject = new Map();
   for (let index = 0; index < events.length; index++) {

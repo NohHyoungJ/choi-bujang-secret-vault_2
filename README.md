@@ -1,4 +1,4 @@
-# BYTE BACK 자료실 · 8단계 저장점
+# BYTE BACK 자료실 · 9단계 저장점
 
 로그인 자료실과 메모 CRUD에 API 소유자 검사·RLS·원본 DB 직접 권한 회수를 추가했습니다. 6~7단계의 기기·가상 추가 확인 규칙에 이어, 8단계에서는 자료 구역 규칙과 API의 저장된 권한 재확인을 구현했습니다.
 
@@ -13,7 +13,7 @@
 - 학습 DB의 RLS 정책은 authenticated의 SELECT·DELETE에 USING, INSERT에 WITH CHECK, UPDATE에 둘 다 auth.uid() = owner_id를 적용합니다. 4단계에서는 authenticated CRUD를 허용했으나 5단계에서는 PUBLIC·anon·authenticated의 메모 테이블 직접 권한을 회수했습니다. RLS 정책은 보존했습니다.
 - 기존 가상 메모 4개와 숫자 기본키를 보존하고, API용 UUID note_id 컬럼을 추가했습니다. 본인 소유가 아닌 기존 메모는 본인 목록에 나오지 않습니다.
 - 공개 data.json에는 notes 빈 배열만 있습니다. 빌드는 메모 본문이 들어 있는 정적 JSON을 거부합니다.
-- AI·침해 정보 API는 501 시작 틀이며, 판정기는 `device_registered`, `step_up_required`, `resource_scope` 규칙을 구현하고 탐지기는 관찰만 합니다. 실제 재인증 연결은 미실행입니다.
+- AI·침해 정보 API는 501 시작 틀이며, 판정기는 `device_registered`, `step_up_required`, `resource_scope` 규칙을 구현합니다. 탐지기는 로컬 가상 복합 의심을 표시하고 확인된 가상 기기 한 개의 회수 제안만 반환합니다. 실제 재인증·기기 회수 연결은 미실행입니다.
 
 ## 다시 실행하고 확인하기
 
@@ -35,7 +35,7 @@ UUID 컬럼 마이그레이션 `supabase/migrations/202610120001_notes_uuid.sql`
 
 ## 설정과 검증 범위
 
-aleph.config.json은 step 8, 기존 GitHub·배포 주소, Supabase issuer/JWKS/audience, GET·POST·PUT·DELETE 경로를 구현과 대조해 기록합니다. originalApiUrl은 쿼리 없는 https://eqfkncijzfsatalbhmij.supabase.co/rest/v1/learning_notes 입니다. judgeIssuer는 운영 측 주소를 그대로 보존했습니다. 현재 판정기 `RULE_IDS`에는 실제 구현한 `device_registered`, `step_up_required`, `resource_scope`를 기록합니다. 8단계 실제 배포·심판 확인 결과는 아래 검증 범위를 따릅니다.
+aleph.config.json은 step 9, 기존 GitHub·배포 주소, Supabase issuer/JWKS/audience, GET·POST·PUT·DELETE 경로를 구현과 대조해 기록합니다. originalApiUrl은 쿼리 없는 https://eqfkncijzfsatalbhmij.supabase.co/rest/v1/learning_notes 입니다. judgeIssuer는 운영 측 주소를 그대로 보존했습니다. 현재 판정기 `RULE_IDS`에는 실제 구현한 `device_registered`, `step_up_required`, `resource_scope`를 기록합니다. 9단계 실제 배포·심판 확인 결과는 아래 검증 범위를 따릅니다.
 
 사용자는 A의 기존 네 메모·B 시험 메모 목록 분리, 실제 A 임시 메모 추가·조회·수정·삭제와 B의 A UUID 조회 404를 확인했습니다. SQL 결과 화면에서 anon 권한 전체 false, authenticated CRUD만 true 및 소유자 정책 4개를 확인했습니다. 실제 상대 메모 수정·삭제 거부와 소유자 변경 거부는 로컬 가상 요청 테스트 통과이며, 도구의 인증된 배포 CRUD·교차 접근 자기 점검과 사용자 역할의 직접 DB RLS 시험은 미실행입니다.
 
@@ -64,6 +64,18 @@ API는 기존 메모 자료·주소·화면 메뉴를 보존합니다. 메모 DB
 aleph.config.json은 step 8이며 allowedRoutes 15개가 판정기의 명시적 허용 조합과 일치하는지 검사했습니다. 자료 API 전체 목록·생성 기능은 보존하지만 판정기 경유 허용 목록에서는 제외합니다. 연습용 경로를 등록하는 것만으로 실제 API가 추가되지는 않습니다. 기존 배포 주소·로그인 발급자·원본 API는 구현과 대조했고 judgeIssuer는 보존했습니다. RULE_IDS에는 구현한 세 규칙만 있습니다. 운영 등록부의 resource_not_allowed 사유 코드와 notices 서비스 이름 일치 여부는 미확인입니다.
 
 `npm run bundle`은 실제 배포 무인증 요청과 로컬 가상 판정 결과를 구분해 기록합니다. 실제 인증 계정의 강사 권한·회수·A/B 교차 접근과 사용자 JWT 원본 DB 시험, 실제 재인증 연결은 미실행입니다. 심판 화면에서는 8단계 저장점 커밋을 선택해 다시 검사합니다. 로컬 시험과 HTTP 자기 점검은 실제 심판 통과 증거가 아닙니다.
+
+## 9단계 저장점: 복합 의심과 가상 기기 회수 제안
+
+제공 사건의 가명 사용자·요청 종류만 안전하게 추출하며 기기·판정이 없으면 null로 남깁니다. 학생이 승인한 로컬 계약 확장으로 judge_fixture 네트워크와 fixtureDevice 확인 정보를 사용합니다. 메모 내용·토큰·실명·지역은 읽거나 출력하지 않습니다. 실제 운영 계약의 확장이나 기기 검증 완료를 의미하지 않습니다.
+
+같은 가명 사용자의 다른 네트워크 GET이 10분 내 120건을 넘을 때만 flag_suspicious로 표시합니다. 정확히 120건, 정상 네트워크, 단일 이상, 시간 밖 조회, 사용자 분리, 출처 누락은 observe입니다. 같은 확인 가상 기기에서 복합 조회가 120건을 넘을 때만 revocationProposal에 propose_revocation·기기 한 개·unusual_network_burst 사유를 넣습니다. 여러 기기의 건수를 합산해 한 기기에 제안하지 않습니다. 기존 접속 판정 응답 다섯 항목은 유지합니다.
+
+재실행: `npm run detect:test`. 이번 셸에 npm이 없어 제공 Node.js로 같은 스크립트를 실행했습니다. 복합 사건 시험 13개와 `node --test test/detect-input.test.mjs test/detect-revocation.test.mjs`의 입력·제안 시험 9개가 통과했습니다. 화면 조작 없이 터미널 결과를 확인합니다. 정상·미확인 기기는 회수 제안이 없어야 하고 확인 가상 기기의 복합 조회에만 한 개 제안이 있어야 합니다.
+
+aleph.config.json은 step 9이며 기존 자료 주소·로그인 발급자·원본 API·판정기 허용 경로 15개를 유지했습니다. judgeIssuer는 보존했고 RULE_IDS에는 기존 세 규칙만 있습니다. 탐지 제안은 접속 판정기의 규칙 등록과 별개입니다. 회수 API·외부 회수 호출·기기 권한 변경·회수 시간 측정은 구현하거나 실행하지 않았습니다. 운영 사건 전달·회수 집행은 미연결이며 실제 회수와 시간은 심판이 확인합니다. 이번 저장점은 아직 푸시·배포하지 않았으므로 배포 HTTP 자기 점검은 기존 배포에 대한 결과입니다.
+
+`npm run bundle`은 실제 배포 무인증 요청, 로컬 가상 탐지·제안, 실제 회수 미실행을 구분해 기록합니다. 실제 심판 통과 결과로 표시하지 않습니다. 원본 API의 사용자 JWT 접근·실제 인증 A/B 교차 접근·강사 계정 시험·재인증 연결도 미실행 상태입니다.
 
 ## 보너스 xdr-01 저장점
 

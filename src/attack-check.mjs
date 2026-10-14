@@ -12,7 +12,7 @@ export async function runAttackChecks(config) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
-  if ([3, 4, 5, 6, 7, 8].includes(config.step)) {
+  if ([3, 4, 5, 6, 7, 8, 9].includes(config.step)) {
     const attempts = [];
     const cases = [
       ['anonymous_list', 'GET', '/api/learning-notes'],
@@ -137,6 +137,59 @@ export async function runAttackChecks(config) {
       attempts.push({ attackId: 'live_instructor_authorization',
         expected: '저장된 강사 권한 재조회, 일반 사용자 403, 강사는 미구현 저장소 501',
         observed: '실제 인증 계정의 강사 경로·권한 회수 시험과 실제 재인증 연결은 미실행. API 권한 분기는 대역을 사용한 로컬 모의 시험만 통과.' });
+    }
+    if (config.step === 9) {
+      const { detect } = await import('./detect.mjs');
+      const reads = (count, { network = 'unusual', verified = false, source = 'judge_fixture',
+        id = 'a'.repeat(16), subject = 'learner_fixture', interval = 2000 } = {}) =>
+        Array.from({ length: count }, (_, index) => ({
+          at: new Date(Date.UTC(2026, 9, 1) + index * interval).toISOString(),
+          method: 'GET', identity: { sub: subject },
+          signals: { source: 'judge_fixture', network }, fixtureDevice: { source, verified, id },
+        }));
+      const privacy = reads(121, { verified: true });
+      for (const event of privacy) {
+        for (const name of ['body', 'token', 'realName']) {
+          Object.defineProperty(event, name, { get() { throw new Error('unexpected_private_field_read'); } });
+        }
+      }
+      const groups = [
+        ['virtual_detection_normal', '정상·단일 이상·120건은 observe, 회수 제안 없음',
+          [reads(30, { network: 'usual' }), reads(200, { network: 'usual' }), reads(30), reads(120)]],
+        ['virtual_detection_burst', '복합 의심 flag_suspicious; 확인된 가상 기기 한 개만 propose_revocation',
+          [reads(121), reads(121, { verified: true })]],
+        ['virtual_detection_unverified', '미확인·출처 불명·기기 누락은 의심 표시만, 회수 제안 없음',
+          [reads(121), reads(121, { verified: true, source: 'unknown' }),
+            reads(121).map(({ fixtureDevice, ...event }) => event)]],
+        ['virtual_detection_isolation', '여러 기기의 합산 회수 제안 없음, 사용자 간 사건 합산 없음', [
+          [...reads(70, { verified: true }), ...reads(60, { verified: true, id: 'b'.repeat(16) })],
+          [...reads(100, { verified: true }), ...reads(100, { verified: true, subject: 'other_fixture' })]]],
+        ['virtual_detection_time', '10분 밖으로 흩어진 조회 observe, 회수 제안 없음',
+          [reads(200, { verified: true, interval: 7000 })]],
+        ['virtual_detection_privacy', '비밀 속성을 읽지 않고 확인된 가상 기기 한 개의 회수 제안', [privacy]],
+      ];
+      for (const [attackId, expected, inputs] of groups) {
+        const results = inputs.map(input => {
+          const result = detect(input);
+          const proposal = result.revocationProposal;
+          return `${result.action}/${proposal?.action ?? '제안없음'}${proposal ? `(가상 기기 1개, ${proposal.reasonCode})` : ''}`;
+        });
+        attempts.push({ attackId, expected,
+          observed: `로컬 가상 사건: ${results.join(', ')}. 실제 회수·심판 판정 아님.` });
+      }
+      const { fixtureRequests } = await import('../scripts/fixture-7.mjs');
+      const { decide } = await import('./decider.mjs');
+      const { normal, suspicious } = fixtureRequests();
+      const previous = [];
+      for (const request of [normal, { ...normal, deviceRegistered: false }, suspicious,
+        { ...suspicious, stepUp: { verified: true, authAgeSeconds: 60 } }]) {
+        const result = await decide(request);
+        previous.push(`${result.decision}/${result.reasonCode}`);
+      }
+      attempts.push({ attackId: 'virtual_previous_rules', expected: '기존 가상 정상 allow·미등록 deny·복합 이상 step_up·재확인 allow',
+        observed: `로컬 가상 요청: ${previous.join(', ')}. 심판 판정 아님.` });
+      attempts.push({ attackId: 'live_device_revocation', expected: '실제 사건 전달·기기 한 개의 권한 회수·회수 시간은 심판 확인',
+        observed: '미실행. 운영 엔진의 사건 전달·회수 집행은 미연결이며 회수 API·기기 권한 변경·회수 시간 측정을 실행하지 않음. 실제 강사 계정·재인증 연결도 미실행.' });
     }
     return attempts;
   }

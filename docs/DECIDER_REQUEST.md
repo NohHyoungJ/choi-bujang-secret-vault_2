@@ -24,6 +24,10 @@
 
 현재 계약에는 `request.identity`, `request.device`, `request.geo`, `request.role`, `request.device.approval`이 **없습니다**. 이 값을 브라우저 요청이나 코드의 임의 상수로 채우면 안 됩니다. 위치 이력·강사 역할·기기 승인 기능은 운영 엔진이 출처를 확인하고 별도 계약으로 제공한 뒤 사용할 수 있습니다.
 
+11단계 시험 사이트의 `/api/device-approval`은 앱 서버가 검증된 로그인 세션을 가상 기기로
+승인하는 별도 구현입니다(`docs/DEVICE_APPROVAL.md`). 이 응답을 운영 엔진의 기기 증명으로
+바꾸거나 판정기 요청 필드에 임의로 덧붙이지 않습니다. 위 엔진 계약은 그대로 유지됩니다.
+
 ## 응답
 
 `decide(request)`는 다음 **5개 이름만** 담은 객체를 반환합니다.

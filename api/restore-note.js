@@ -3,6 +3,7 @@ import config from '../aleph.config.json' with { type: 'json' };
 import { createLoginVerifier } from '../src/verify-login.mjs';
 import { ACCESS_COOKIE, readCookie, sameOrigin } from '../src/session-cookies.mjs';
 import { NOTE_ID, verifiedBackupNote, restoreOneNote } from '../src/restore-note.mjs';
+import { readDeviceApproval } from '../src/device-approval.mjs';
 
 let verifier;
 const error = (response, status, code) => {
@@ -37,6 +38,11 @@ export default async function handler(request, response) {
     login = await verifier(authorization);
   } catch { return error(response, 503, 'RESTORE_CONFIGURATION_INVALID'); }
   if (!login) return error(response, 401, 'LOGIN_REQUIRED');
+  try {
+    const approval = await readDeviceApproval(login);
+    if (approval.status === 'unavailable') return error(response, 503, 'DEVICE_APPROVAL_UNAVAILABLE');
+    if (!approval.deviceRegistered) return error(response, 403, 'DEVICE_NOT_REGISTERED');
+  } catch { return error(response, 503, 'DEVICE_APPROVAL_UNAVAILABLE'); }
   if (login.userId !== testOwner) return error(response, 403, 'RESTORE_TEST_ACCOUNT_REQUIRED');
   let input;
   try { input = typeof request.body === 'string' ? JSON.parse(request.body) : request.body; }

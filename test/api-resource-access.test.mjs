@@ -49,6 +49,9 @@ test('직접 API 요청의 저장된 소유자·강사 권한과 구역 격리',
   globalThis[key] = state;
   const moduleUrl = source => `data:text/javascript,${encodeURIComponent(source)}`;
   const hook = registerHooks({ resolve(specifier, context, nextResolve) {
+    // These existing cases exercise ownership/role checks after virtual approval.
+    if (specifier.endsWith('/src/device-approval.mjs')) return { shortCircuit: true, url: moduleUrl(
+      'export async function readDeviceApproval(){return {status:"approved",deviceRegistered:true};}') };
     if (specifier === '@supabase/supabase-js') return { shortCircuit: true, url: moduleUrl(
       'export function createClient(){return globalThis[Symbol.for("vault-api-resource-test")].client;}') };
     if (specifier.endsWith('/src/verify-login.mjs')) return { shortCircuit: true, url: moduleUrl(

@@ -73,11 +73,13 @@ test('설치·오프라인·재연결 이벤트는 기기를 승인 처리하지
     addEventListener(name, callback) { windowHandlers[name] = callback; } };
   Object.defineProperty(windowRef, 'localStorage', { get() { throw new Error('unexpected_storage'); } });
   const navigatorRef = { onLine: true };
+  // The approval screen owns this initial text; setupPwa must not touch it.
+  const approval = documentRef.querySelector('#device-approval-status');
+  approval.textContent = '기기 승인: 미확인';
   let offline = 0;
   let online = 0;
   setupPwa({ windowRef, navigatorRef, documentRef,
     onOffline() { offline++; }, onOnline() { online++; } });
-  const approval = elements.get('#device-approval-status');
   const original = approval.textContent;
   windowHandlers.beforeinstallprompt({ preventDefault() {}, async prompt() {},
     userChoice: Promise.resolve({ outcome: 'accepted' }) });

@@ -47,15 +47,16 @@
       <h2 id="app-title">자료실 앱과 기기 상태</h2>
       <p id="installation-status" role="status">웹으로 사용 중입니다. 설치는 브라우저 메뉴에서 확인하세요.</p>
       <button id="install-app" type="button" hidden>자료실 앱 설치</button>
-      <p id="device-approval-status" role="status">기기 승인: 미확인 — 접속 엔진의 승인 정보가 연결되지 않았습니다.</p>
+      <p id="device-approval-status" role="status">시험 기기 승인: 미확인</p>
       <button id="request-device-approval" type="button">기기 승인 요청</button>
       <button id="refresh-device-approval" type="button">승인 결과 다시 확인</button>
-      <p id="device-approval-result" role="status" aria-live="polite">승인 서버 연결이 필요합니다. 확인 전에는 보호 자료를 요청하거나 표시하지 않습니다.</p>
+      <p id="device-approval-result" role="status" aria-live="polite">로그인 후 현재 접속의 승인 상태를 서버에서 확인합니다.</p>
+      <p>시험용 가상 기기는 로그인 세션 한 개입니다. 새 로그인은 별도 승인이 필요하며 실제 물리 기기 증명은 아닙니다.</p>
       <p>앱 설치나 로그인만으로 기기 확인이 끝나지 않습니다. 실제 기기 확인과 접근 판정은 서버·접속 엔진이 맡습니다.</p>
       <p id="connection-status" role="status" aria-live="polite">오프라인에서는 로그인·자료 조회·저장을 사용할 수 없습니다.</p>
       <p id="offline-support" class="auth-message" role="status"></p>
     </section>
-    <div class="notice">로그인과 서버의 현재 기기 등록 확인이 모두 필요합니다. 현재 기기 확인 연결이 없어 자료실은 잠겨 있습니다.</div>
+    <div class="notice">로그인과 서버의 시험 기기 승인이 모두 필요합니다. 승인 대기·철회·만료·확인 오류 때는 자료실이 잠깁니다.</div>
     <section class="auth" aria-labelledby="auth-title">
       <h2 id="auth-title">로그인</h2>
       <form id="login-form" novalidate>
@@ -73,6 +74,7 @@
       </div>
       <p id="auth-message" class="auth-message" role="status" aria-live="polite"></p>
     </section>
+    <section id="protected-vault" hidden inert aria-hidden="true" aria-label="승인된 기기의 자료실">
     <section id="editor" class="auth" hidden>
       <h2>가상 메모 추가·수정</h2>
       <form id="note-form">
@@ -88,26 +90,87 @@
       </form>
       <p id="note-message" role="status"></p>
     </section>
-    <ul id="notes" aria-live="polite"><li>기기 승인 확인 전입니다. 보호 자료를 표시하지 않습니다.</li></ul>
+    <ul id="notes" aria-live="polite"></ul>
+    </section>
   </main>
   <script type="module">
     import { setupPwa } from '/app-shell.mjs';
     const list = document.querySelector('#notes');
-    // No browser approval API exists in the supplied engine contract.
-    // Fail closed; installation, login and button clicks never change this value.
-    const deviceAccessConfirmed = false;
+    const protectedVault = document.querySelector('#protected-vault');
+    // In-memory display state only. The server independently checks approval on every data request.
+    let deviceAccessConfirmed = false;
+    let approvalSequence = 0;
     const approvalResult = document.querySelector('#device-approval-result');
+    const approvalStatus = document.querySelector('#device-approval-status');
+    const requestApprovalButton = document.querySelector('#request-device-approval');
+    const refreshApprovalButton = document.querySelector('#refresh-device-approval');
     const lockedMessage = '기기 승인이 확인되지 않았습니다. 보호 자료를 표시하지 않습니다.';
-    document.querySelector('#request-device-approval').onclick = () => {
-      approvalResult.textContent = navigator.onLine
-        ? '미전송: 운영 엔진의 승인 요청 API 계약이 없습니다. 승인 요청은 접수되지 않았고 자료실은 잠겨 있습니다.'
-        : '미전송: 오프라인입니다. 연결 후에도 승인 서버 연결이 필요합니다.';
+
+    function lockDeviceAccess() {
+      deviceAccessConfirmed = false;
+      protectedVault.hidden = true; protectedVault.inert = true;
+      protectedVault.setAttribute('aria-hidden', 'true');
+      editor.hidden = true;
+      ++loadSequence;
+      list.replaceChildren(); noteForm.reset(); document.querySelector('#lookup-form').reset();
+      noteMessage.textContent = '';
+      approvalStatus.textContent = '시험 기기 승인: 미확인';
+    }
+
+    function acceptApprovalResponse(result) {
+      const states = { unregistered: '미등록', pending: '승인 대기', approved: '승인됨',
+        revoked: '철회됨', expired: '만료됨' };
+      if (result?.schema !== 'vault.test-device-approval.v1' || result.mode !== 'test_session'
+          || !Object.hasOwn(states, result.status)
+          || typeof result.deviceRegistered !== 'boolean'
+          || result.deviceRegistered !== (result.status === 'approved')
+          || (result.status === 'approved' && result.requestId === null)
+          || !(result.requestId === null || (typeof result.requestId === 'string'
+            && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(result.requestId)))) {
+        throw new Error('서버의 승인 응답을 확인할 수 없습니다.');
+      }
+      deviceAccessConfirmed = result.status === 'approved' && result.deviceRegistered === true;
+      approvalStatus.textContent = `시험 기기 승인: ${states[result.status]} (서버 확인)`;
+      approvalResult.textContent = result.requestId
+        ? `승인 요청 번호: ${result.requestId}. ${deviceAccessConfirmed ? '현재 접속의 승인을 확인했습니다.' : '관리자 확인 전에는 자료를 표시하지 않습니다.'}`
+        : '기기 승인 요청을 누르면 현재 접속의 대기 요청을 서버에 등록합니다.';
+    }
+
+    async function approvalRequest(method) {
+      if (!navigator.onLine) throw new Error('오프라인에서는 기기 승인을 확인할 수 없습니다.');
+      const response = await fetch('/api/device-approval', {
+        method, credentials: 'same-origin', cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', 'X-Vault-Request': '1' },
+        ...(method === 'POST' ? { body: '{}' } : {}),
+      });
+      if (!response.ok) throw new Error('기기 승인을 확인할 수 없습니다. 로그인과 서버 연결을 확인하세요.');
+      return response.json();
+    }
+
+    requestApprovalButton.onclick = async () => {
+      requestApprovalButton.disabled = true;
+      ++approvalSequence; syncing = null; lockDeviceAccess();
+      try {
+        const session = await sessionRequest('GET');
+        if (!session.signedIn) throw new Error('로그인 후 승인 요청을 보내세요.');
+        await approvalRequest('POST');
+        // A button click/POST response never opens the vault. Re-read server state through GET.
+        await syncSession();
+      } catch {
+        ++approvalSequence; lockDeviceAccess();
+        approvalResult.textContent = '승인 요청 결과를 확인할 수 없습니다. 로그인과 서버 연결을 확인하세요.';
+      } finally { requestApprovalButton.disabled = false; }
     };
-    document.querySelector('#refresh-device-approval').onclick = () => {
-      approvalResult.textContent = '확인 불가: 기기 상태 조회 API 계약이 없습니다. 승인·거부 결과를 추정하지 않으며 자료실은 잠겨 있습니다.';
+    refreshApprovalButton.onclick = async () => {
+      refreshApprovalButton.disabled = true;
+      try { await syncSession(); }
+      catch { approvalResult.textContent = '승인 상태 확인 실패. 자료실이 잠겨 있습니다.'; }
+      finally { refreshApprovalButton.disabled = false; }
     };
 
     function showListMessage(text) {
+      // The approval notice belongs outside the protected region. Keep its DOM empty while locked.
+      if (!deviceAccessConfirmed) { list.replaceChildren(); return; }
       const item = document.createElement('li');
       item.textContent = text;
       list.replaceChildren(item);
@@ -129,11 +192,11 @@
           cache: 'no-store',
           credentials: 'same-origin',
         });
-        if (sequence !== loadSequence) return;
+        if (sequence !== loadSequence || !deviceAccessConfirmed) return;
         if (response.status === 401) throw new Error('로그인이 확인되지 않아 자료를 보여 줄 수 없습니다.');
         if (!response.ok) throw new Error('자료를 읽을 수 없습니다.');
         const data = await response.json();
-        if (sequence !== loadSequence) return;
+        if (sequence !== loadSequence || !deviceAccessConfirmed) return;
         if (!Array.isArray(data)) throw new Error('자료 형식이 맞지 않습니다.');
         if (!data.length) { showListMessage('내 메모가 없습니다. 새 메모를 추가하세요.'); return; }
         list.replaceChildren(...data.map(note => {
@@ -155,7 +218,10 @@
           return item;
         }));
       } catch (error) {
-        if (sequence === loadSequence) showListMessage(error.message);
+        if (sequence === loadSequence) {
+          ++approvalSequence; lockDeviceAccess();
+          approvalResult.textContent = '자료 응답을 확인할 수 없어 자료실을 잠갔습니다. 승인 상태를 다시 확인하세요.';
+        }
       }
     }
 
@@ -190,18 +256,39 @@
     let sessionUser;
     async function noteRequest(method, id, body) {
       if (!deviceAccessConfirmed) throw new Error(lockedMessage);
+      try {
+      const approvalVersion = approvalSequence;
+      const requestingUser = sessionUser;
       if (!navigator.onLine) throw new Error('오프라인에서는 자료를 요청할 수 없습니다.');
       const session = await sessionRequest('GET');
       if (!navigator.onLine) { updateSession(false); throw new Error('연결이 끊겼습니다. 자료를 다시 확인하세요.'); }
       if (!session.signedIn) { updateSession(false); throw new Error('로그인이 필요합니다.'); }
+      if (session.userId !== requestingUser || approvalVersion !== approvalSequence) {
+        lockDeviceAccess(); throw new Error('접속 상태가 바뀌었습니다. 승인을 다시 확인하세요.');
+      }
+      const approval = await approvalRequest('GET');
+      if (approvalVersion !== approvalSequence || !navigator.onLine) throw new Error(lockedMessage);
+      acceptApprovalResponse(approval);
+      updateSession(true, session.userId);
+      if (!deviceAccessConfirmed) throw new Error(lockedMessage);
       const response = await fetch(`/api/learning-notes${id ? `/${encodeURIComponent(id)}` : ''}`, {
         method, cache: 'no-store',
         credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(`요청 실패 (${response.status}: ${result.error ?? '오류'})`);
+      if (!response.ok) {
+        if ([401, 403, 503].includes(response.status)) { ++approvalSequence; lockDeviceAccess(); }
+        throw new Error(`요청 실패 (${response.status}: ${result.error ?? '오류'})`);
+      }
+      if (approvalVersion !== approvalSequence || !deviceAccessConfirmed
+          || requestingUser !== sessionUser) throw new Error(lockedMessage);
       return result;
+      } catch (error) {
+        ++approvalSequence; lockDeviceAccess();
+        approvalResult.textContent = '요청을 확인할 수 없어 자료실을 잠갔습니다. 승인 상태를 다시 확인하세요.';
+        throw error;
+      }
     }
     async function refreshNotes() {
       await syncSession();
@@ -253,6 +340,7 @@
     }
     function updateSession(signedIn, userId) {
       if (!navigator.onLine) signedIn = false;
+      if (!signedIn) { ++approvalSequence; deviceAccessConfirmed = false; }
       // Invalidate pending responses when the local session changes.
       ++loadSequence;
       const nextUser = signedIn ? userId : null;
@@ -260,10 +348,14 @@
         noteForm.reset(); document.querySelector('#lookup-form').reset(); noteMessage.textContent = '';
       }
       sessionUser = nextUser;
-      editor.hidden = !signedIn || !deviceAccessConfirmed;
-      if (!deviceAccessConfirmed) {
+      const canShowVault = signedIn && deviceAccessConfirmed;
+      protectedVault.hidden = !canShowVault;
+      protectedVault.inert = !canShowVault;
+      protectedVault.setAttribute('aria-hidden', String(!canShowVault));
+      editor.hidden = !canShowVault;
+      if (!canShowVault) {
         noteForm.reset(); document.querySelector('#lookup-form').reset(); noteMessage.textContent = '';
-        showListMessage(lockedMessage);
+        list.replaceChildren();
       }
       render(signedIn);
       if (!signedIn && deviceAccessConfirmed) showListMessage('로그인하면 자료를 볼 수 있습니다.');
@@ -271,16 +363,37 @@
     let syncing;
     async function syncSession() {
       if (syncing) return syncing;
-      syncing = (async () => {
-        const session = await sessionRequest('GET');
-        updateSession(session.signedIn, session.userId);
-        await loadNotes(session.signedIn);
+      const sequence = ++approvalSequence;
+      lockDeviceAccess();
+      const task = (async () => {
+        try {
+          const session = await sessionRequest('GET');
+          if (sequence !== approvalSequence) return;
+          updateSession(session.signedIn, session.userId);
+          if (!session.signedIn) {
+            approvalResult.textContent = '로그인 후 현재 접속의 승인을 요청하세요.';
+            return;
+          }
+          const approval = await approvalRequest('GET');
+          if (sequence !== approvalSequence || !navigator.onLine) return;
+          acceptApprovalResponse(approval);
+          updateSession(true, session.userId);
+          if (deviceAccessConfirmed) await loadNotes(true);
+        } catch (error) {
+          if (sequence === approvalSequence) {
+            lockDeviceAccess();
+            approvalResult.textContent = '승인 상태 확인 실패. 자료실이 잠겨 있습니다.';
+          }
+          throw error;
+        }
       })();
-      try { await syncing; } finally { syncing = null; }
+      syncing = task;
+      try { await task; } finally { if (syncing === task) syncing = null; }
     }
     form.addEventListener('submit', async event => {
       event.preventDefault();
       submitButton.disabled = true;
+      ++approvalSequence; syncing = null; lockDeviceAccess();
       showMessage('로그인하는 중입니다.');
       try {
         await sessionRequest('POST', { email: emailInput.value.trim(), password: passwordInput.value });
@@ -292,6 +405,7 @@
     });
     logoutButton.addEventListener('click', async () => {
       logoutButton.disabled = true;
+      ++approvalSequence; syncing = null; lockDeviceAccess();
       try {
         await sessionRequest('DELETE');
         updateSession(false);
@@ -303,6 +417,7 @@
     window.addEventListener('focus', () => syncSession().catch(error => showMessage(error.message, 'error')));
     setupPwa({
       onOffline() {
+        ++approvalSequence; syncing = null; lockDeviceAccess();
         updateSession(false);
         noteForm.reset(); document.querySelector('#lookup-form').reset();
         emailInput.value = ''; passwordInput.value = ''; noteMessage.textContent = '';

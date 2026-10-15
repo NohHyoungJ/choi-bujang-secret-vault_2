@@ -20,6 +20,13 @@ test('자료 API는 검증된 토큰만 허용하고 브라우저의 userId·rol
     if (url.href === config.identityProvider.jwksUrl) {
       return Response.json({ keys: [jwk] });
     }
+    if (url.origin === origin && url.pathname === '/rest/v1/vault_test_device_approvals') {
+      // Existing CRUD cases use an explicitly approved synthetic session, never a real device.
+      return Response.json({ request_id: '00000000-0000-4000-8000-000000000004',
+        user_id: url.searchParams.get('user_id')?.replace(/^eq\./, ''),
+        session_id: url.searchParams.get('session_id')?.replace(/^eq\./, ''),
+        state: 'approved', approved_until: new Date(Date.now() + 60000).toISOString() });
+    }
     if (url.origin === origin && url.pathname === '/rest/v1/learning_notes') {
       databaseReads++;
       const method = init.method ?? 'GET';
@@ -71,7 +78,7 @@ test('자료 API는 검증된 토큰만 허용하고 브라우저의 userId·rol
     await denied(undefined);
     await denied('Bearer invalid');
     const sign = (key, overrides = {}) => new SignJWT({
-      role: 'authenticated', ...overrides,
+      role: 'authenticated', session_id: '00000000-0000-4000-8000-000000000005', ...overrides,
     }).setProtectedHeader({ alg: 'ES256', kid: 'auth-test' })
       .setIssuer(config.identityProvider.issuer)
       .setAudience(config.identityProvider.audience)
@@ -108,7 +115,7 @@ test('자료 API는 검증된 토큰만 허용하고 브라우저의 userId·rol
     assert.equal((await invoke(auth)).body.length, 1);
     assert.equal((await invoke(auth, 'PUT', id, { title: 'Updated', body: 'Changed' })).status, 200);
     // B must not access A's note, even with its exact UUID.
-    const b = await new SignJWT({ role: 'authenticated' }).setProtectedHeader({ alg: 'ES256', kid: 'auth-test' })
+    const b = await new SignJWT({ role: 'authenticated', session_id: '00000000-0000-4000-8000-000000000006' }).setProtectedHeader({ alg: 'ES256', kid: 'auth-test' })
       .setIssuer(config.identityProvider.issuer).setAudience(config.identityProvider.audience)
       .setSubject('00000000-0000-4000-8000-000000000002').setIssuedAt().setExpirationTime('5m').sign(privateKey);
     assert.deepEqual((await invoke(`Bearer ${b}`)).body, []);

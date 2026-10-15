@@ -43,11 +43,11 @@ export async function runAttackChecks(config) {
     const data = await staticData.json().catch(() => null);
     attempts.push({ attackId: 'public_static_notes', expected: '공개 가상 메모는 정적 JSON에서 제외, notes 빈 배열',
       observed: `HTTP ${staticData.status} · ${Array.isArray(data?.notes) && data.notes.length === 0 ? '빈 메모 배열 확인' : '빈 메모 배열 확인 실패'}` });
-    attempts.push({ attackId: 'authenticated_crud', expected: '정상 A 추가·수정·삭제 성공, 삭제 후 GET 404',
-      observed: '배포 API의 정상 로그인 CRUD 자기 점검은 미실행. 로컬 가상 요청 테스트만 통과.' });
+    attempts.push({ attackId: 'authenticated_crud', expected: '승인된 정상 A 추가·수정·삭제 성공, 삭제 후 GET 404',
+      observed: '배포 API의 정상 로그인 CRUD 자기 점검은 미실행. 시험 승인 연결 후의 인증 CRUD 재검사도 미실행.' });
     if (config.step >= 4) {
-      attempts.push({ attackId: 'cross_owner_access', expected: '상대 UUID의 GET·PUT·DELETE 404, 소유자 변경 PUT 400',
-        observed: '배포 API의 인증된 A/B 교차 접근 자기 점검은 미실행. 로컬 가상 요청 테스트만 통과.' });
+      attempts.push({ attackId: 'cross_owner_access', expected: '승인된 A/B의 상대 UUID GET·PUT·DELETE 404, 소유자 변경 PUT 400',
+        observed: '배포 API의 인증된 A/B 교차 접근 자기 점검은 미실행. 시험 승인 연결 후의 소유자 검사 재실행도 미실행.' });
       attempts.push({ attackId: 'database_rls', expected: '사용자 역할의 본인 행 CRUD 허용, 상대 행 접근·소유자 변경 거부',
         observed: '사용자 역할로 DB에 직접 접근하는 RLS 동작 자기 점검은 미실행.' });
     }
@@ -283,9 +283,10 @@ export async function runAttackChecks(config) {
         observed: assets.join(', ') });
       try {
         const response = await getPublic('/');
-        const locked = response.text.includes('const deviceAccessConfirmed = false;')
+        const locked = response.text.includes('id="protected-vault" hidden inert aria-hidden="true"')
           && response.text.includes('id="request-device-approval"')
           && response.text.includes('id="refresh-device-approval"')
+          && response.text.includes("fetch('/api/device-approval'")
           && response.text.includes('if (!deviceAccessConfirmed)');
         attempts.push({ attackId: 'device_approval_locked_page', expected: '승인 요청·결과 UI와 연결 전 잠금 코드 제공',
           observed: `HTTP ${response.status} · 잠금 화면 코드 확인=${locked}. 브라우저 동작·서버 기기 검증 시험 아님.` });
@@ -301,8 +302,8 @@ export async function runAttackChecks(config) {
       }
       attempts.push({ attackId: 'virtual_previous_access', expected: '가상 정상 allow·미등록 deny·복합 이상 step_up·메모 목록 deny',
         observed: `로컬 가상 요청: ${results.join(', ')}. 실제 승인·심판 판정 아님.` });
-      attempts.push({ attackId: 'live_device_approval', expected: '서버의 현재 기기 등록 확인 뒤 본인 자료만 표시, 미승인·오류 차단',
-        observed: '미실행·미연결. 승인 요청·상태 조회 계약이 없어 모든 기기 화면을 잠금. 버튼은 미전송·확인 불가 표시. 승인 기기의 화면 진입도 미구현.' });
+      attempts.push({ attackId: 'live_device_approval', expected: '서버의 시험 로그인 세션 승인 뒤 본인 자료만 표시, 미승인·오류 차단. 물리 기기 증명 아님.',
+        observed: '실제 브라우저 로그인·승인·철회 흐름은 미실행. 시험 API는 검증된 로그인 세션을 가상 기기로 취급하고 관리자가 DB에서 승인함. 물리 기기 증명·운영 엔진 연동 아님.' });
       attempts.push({ attackId: 'live_pwa_browser', expected: '설치·오프라인 안내·보호 자료 비저장·미승인 화면 잠금',
         observed: '실제 브라우저 설치·오프라인 전환·로그인한 승인 화면 시험은 미실행.' });
       attempts.push({ attackId: 'live_previous_integrations', expected: '이전 단계의 재인증·강사 권한·기기 회수·복구 뒤 재검사',

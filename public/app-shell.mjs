@@ -4,13 +4,12 @@ export function setupPwa({ onOffline = () => {}, onOnline = () => {},
   const button = documentRef.querySelector('#install-app');
   const connection = documentRef.querySelector('#connection-status');
   const offlineSupport = documentRef.querySelector('#offline-support');
-  const approval = documentRef.querySelector('#device-approval-status');
-  approval.textContent = '기기 승인: 미확인 — 승인 서버 연결 전이므로 자료실이 잠겨 있습니다.';
+  // Installation UI never reads or writes device approval or the protected region.
   let installPrompt;
   const standalone = windowRef.matchMedia('(display-mode: standalone)').matches
     || navigatorRef.standalone === true;
   installation.textContent = standalone
-    ? '앱 창으로 사용 중입니다. 설치 상태는 기기 승인과 별개입니다.'
+    ? '앱 창으로 사용 중입니다.'
     : '웹으로 사용 중입니다. 브라우저 메뉴의 앱 설치 또는 홈 화면 추가를 확인하세요.';
   const updateConnection = () => {
     connection.textContent = navigatorRef.onLine
@@ -29,13 +28,13 @@ export function setupPwa({ onOffline = () => {}, onOnline = () => {},
       await prompt.prompt();
       const choice = await prompt.userChoice;
       installation.textContent = choice.outcome === 'accepted'
-        ? '설치를 요청했습니다. 설치 여부와 기기 승인은 별개입니다.'
-        : '웹으로 계속 사용합니다. 기기 확인은 접속 엔진이 담당합니다.';
+        ? '브라우저에 앱 설치를 요청했습니다.'
+        : '웹으로 계속 사용합니다.';
     } catch { installation.textContent = '브라우저 메뉴에서 설치 가능 여부를 확인하세요.'; }
   });
   windowRef.addEventListener('appinstalled', () => {
     installPrompt = null; button.hidden = true;
-    installation.textContent = '앱이 설치됐습니다. 기기 승인은 아직 확인되지 않았습니다.';
+    installation.textContent = '앱이 설치됐습니다.';
   });
   windowRef.addEventListener('offline', () => { updateConnection(); onOffline(); });
   windowRef.addEventListener('online', () => { updateConnection(); onOnline(); });

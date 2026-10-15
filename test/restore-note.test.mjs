@@ -55,6 +55,9 @@ test('POST 한 건 복원은 B의 ID·소유자·내용 해시와 다른 메모�
   globalThis[key] = state;
   const dataUrl = text => `data:text/javascript,${encodeURIComponent(text)}`;
   const hook = registerHooks({ resolve(specifier, context, next) {
+    // Restore authorization cases start after a virtual approval check.
+    if (specifier.endsWith('/src/device-approval.mjs')) return { shortCircuit: true, url: dataUrl(
+      'export async function readDeviceApproval(){return {status:"approved",deviceRegistered:true};}') };
     if (specifier === '@supabase/supabase-js') return { shortCircuit: true, url: dataUrl(
       'export function createClient(){return globalThis[Symbol.for("vault-restore-note-test")].client;}') };
     if (specifier.endsWith('/src/verify-login.mjs')) return { shortCircuit: true, url: dataUrl(

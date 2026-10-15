@@ -4,6 +4,7 @@ import config from '../aleph.config.json' with { type: 'json' };
 import { createLoginVerifier } from '../src/verify-login.mjs';
 import { ACCESS_COOKIE, readCookie, sameOrigin } from '../src/session-cookies.mjs';
 import { RESOURCE_IDS, resourceForPath } from '../src/resource-ids.mjs';
+import { readDeviceApproval } from '../src/device-approval.mjs';
 
 function sendError(response, status, code) {
   // 짧은 고정 사유만 기록합니다. 사용자·토큰·요청 본문·자료 내용은 기록하지 않습니다.
@@ -69,6 +70,11 @@ export default async function handler(request, response) {
     return sendError(response, 503, 'SERVER_CONFIGURATION_INVALID');
   }
   if (!login) return denyLogin();
+  try {
+    const approval = await readDeviceApproval(login);
+    if (approval.status === 'unavailable') return sendError(response, 503, 'DEVICE_APPROVAL_UNAVAILABLE');
+    if (!approval.deviceRegistered) return sendError(response, 403, 'DEVICE_NOT_REGISTERED');
+  } catch { return sendError(response, 503, 'DEVICE_APPROVAL_UNAVAILABLE'); }
   if (id && !uuid.test(id)) return sendError(response, 400, 'INVALID_ID');
 
   // 반 공지 저장소는 아직 없습니다. 일반 공지 경로는 쓰기를 열지 않습니다.

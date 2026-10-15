@@ -12,7 +12,7 @@ export async function runAttackChecks(config) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
-  if ([3, 4, 5, 6, 7, 8, 9, 10].includes(config.step)) {
+  if ([3, 4, 5, 6, 7, 8, 9, 10, 11].includes(config.step)) {
     const attempts = [];
     const cases = [
       ['anonymous_list', 'GET', '/api/learning-notes'],
@@ -252,6 +252,71 @@ export async function runAttackChecks(config) {
       }
       attempts.push({ attackId: 'live_restore_and_regression', expected: '실제 시험 정책·B 메모 복구 및 복구 뒤 1~9단계 정상·금지 재검사',
         observed: '미실행. 실제 안전 정책 사본·검증 기록·비공개 B 사본·B 서버 설정이 없음. 실제 정책·DB 복원·인증 A/B 재검사·기기 회수와 시간 확인은 수행하지 않음.' });
+    }
+    if (config.step === 11) {
+      const getPublic = async path => {
+        const response = await fetch(new URL(path, app), {
+          redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(10000),
+        });
+        return { status: response.status, text: await response.text() };
+      };
+      try {
+        const response = await getPublic('/manifest.webmanifest');
+        const manifest = JSON.parse(response.text);
+        const valid = manifest.name === 'BYTE BACK 자료실' && manifest.start_url === '/'
+          && manifest.display === 'standalone'
+          && ['192x192', '512x512'].every(size => manifest.icons?.some(icon => icon.sizes === size));
+        attempts.push({ attackId: 'pwa_manifest', expected: 'HTTP 200, 앱 이름·시작 주소·설치 아이콘 설정',
+          observed: `HTTP ${response.status} · manifest 일치=${valid}. 브라우저 설치 시험 아님.` });
+      } catch { attempts.push({ attackId: 'pwa_manifest', expected: '설치 manifest 조회', observed: '요청 실패: 응답 확인 불가' }); }
+      const assets = [];
+      for (const path of ['/offline.html', '/sw.js', '/app-shell.mjs', '/icons/vault-192.png', '/icons/vault-512.png']) {
+        try {
+          const response = await fetch(new URL(path, app), {
+            redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(10000),
+          });
+          assets.push(`${path}:HTTP ${response.status}`);
+          await response.body?.cancel();
+        } catch { assets.push(`${path}:응답 확인 불가`); }
+      }
+      attempts.push({ attackId: 'pwa_public_assets', expected: '공개 오프라인 안내·서비스 워커·앱 모듈·아이콘 HTTP 200',
+        observed: assets.join(', ') });
+      try {
+        const response = await getPublic('/');
+        const locked = response.text.includes('const deviceAccessConfirmed = false;')
+          && response.text.includes('id="request-device-approval"')
+          && response.text.includes('id="refresh-device-approval"')
+          && response.text.includes('if (!deviceAccessConfirmed)');
+        attempts.push({ attackId: 'device_approval_locked_page', expected: '승인 요청·결과 UI와 연결 전 잠금 코드 제공',
+          observed: `HTTP ${response.status} · 잠금 화면 코드 확인=${locked}. 브라우저 동작·서버 기기 검증 시험 아님.` });
+      } catch { attempts.push({ attackId: 'device_approval_locked_page', expected: '연결 전 잠금 화면 제공', observed: '요청 실패: 응답 확인 불가' }); }
+      const { fixtureRequests } = await import('../scripts/fixture-7.mjs');
+      const { decide } = await import('./decider.mjs');
+      const { normal, suspicious } = fixtureRequests();
+      const results = [];
+      for (const request of [normal, { ...normal, deviceRegistered: false }, suspicious,
+        { ...normal, path: '/notes', route: 'GET /notes' }]) {
+        const result = await decide(request);
+        results.push(`${result.decision}/${result.reasonCode}`);
+      }
+      attempts.push({ attackId: 'virtual_previous_access', expected: '가상 정상 allow·미등록 deny·복합 이상 step_up·메모 목록 deny',
+        observed: `로컬 가상 요청: ${results.join(', ')}. 실제 승인·심판 판정 아님.` });
+      attempts.push({ attackId: 'live_device_approval', expected: '서버의 현재 기기 등록 확인 뒤 본인 자료만 표시, 미승인·오류 차단',
+        observed: '미실행·미연결. 승인 요청·상태 조회 계약이 없어 모든 기기 화면을 잠금. 버튼은 미전송·확인 불가 표시. 승인 기기의 화면 진입도 미구현.' });
+      attempts.push({ attackId: 'live_pwa_browser', expected: '설치·오프라인 안내·보호 자료 비저장·미승인 화면 잠금',
+        observed: '실제 브라우저 설치·오프라인 전환·로그인한 승인 화면 시험은 미실행.' });
+      attempts.push({ attackId: 'live_previous_integrations', expected: '이전 단계의 재인증·강사 권한·기기 회수·복구 뒤 재검사',
+        observed: '실제 재인증·강사 계정·기기 회수와 시간·정책 및 B 메모 복구 뒤 1~9단계 재검사는 미실행.' });
+      try {
+        const { execFileSync } = await import('node:child_process');
+        const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true }).trim();
+        const response = await getPublic('/aleph.json');
+        const identity = JSON.parse(response.text);
+        const matches = identity.commit === commit && identity.step === config.step
+          && identity.repoUrl?.toLowerCase() === config.repoUrl.toLowerCase();
+        attempts.push({ attackId: 'deployment_identity', expected: '배포 단계·커밋·저장소가 제출 대상과 일치',
+          observed: `HTTP ${response.status} · 제출 대상 일치=${matches}. 기기 승인 연동 완료를 뜻하지 않음.` });
+      } catch { attempts.push({ attackId: 'deployment_identity', expected: '배포 단계·커밋·저장소 확인', observed: '요청 실패: 배포 대상 확인 불가' }); }
     }
     return attempts;
   }

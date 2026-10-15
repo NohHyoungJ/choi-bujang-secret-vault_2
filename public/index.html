@@ -3,7 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BYTE BACK | 점령된 자료실</title>
+  <title>BYTE BACK 자료실</title>
+  <meta name="theme-color" content="#101a28">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/vault-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="/icons/vault-192.png">
   <style>
     :root { color-scheme: dark; font-family: system-ui, sans-serif; }
     body { margin: 0; min-height: 100vh; background: #101a28; color: #ecf4ff; }
@@ -36,10 +40,22 @@
 </head>
 <body>
   <main>
-    <div class="eyebrow">BYTE BACK · 1단계 피해 확인</div>
-    <h1>점령된 자료실</h1>
-    <p>로그인해서 가상 메모를 관리하세요. 현재 단계에서는 다른 사용자의 메모도 ID를 알면 수정·삭제할 수 있습니다.</p>
-    <div class="notice">로그인한 사용자만 자료를 볼 수 있습니다. 로그인하지 않았거나 로그인 확인에 실패하면 서버가 자료를 보내지 않습니다.</div>
+    <div class="eyebrow">BYTE BACK · 내 접속 앱</div>
+    <h1>BYTE BACK 자료실</h1>
+    <p>로그인해서 내 가상 메모를 관리하세요. 서버가 로그인과 자료 소유자를 확인합니다.</p>
+    <section class="auth" aria-labelledby="app-title">
+      <h2 id="app-title">자료실 앱과 기기 상태</h2>
+      <p id="installation-status" role="status">웹으로 사용 중입니다. 설치는 브라우저 메뉴에서 확인하세요.</p>
+      <button id="install-app" type="button" hidden>자료실 앱 설치</button>
+      <p id="device-approval-status" role="status">기기 승인: 미확인 — 접속 엔진의 승인 정보가 연결되지 않았습니다.</p>
+      <button id="request-device-approval" type="button">기기 승인 요청</button>
+      <button id="refresh-device-approval" type="button">승인 결과 다시 확인</button>
+      <p id="device-approval-result" role="status" aria-live="polite">승인 서버 연결이 필요합니다. 확인 전에는 보호 자료를 요청하거나 표시하지 않습니다.</p>
+      <p>앱 설치나 로그인만으로 기기 확인이 끝나지 않습니다. 실제 기기 확인과 접근 판정은 서버·접속 엔진이 맡습니다.</p>
+      <p id="connection-status" role="status" aria-live="polite">오프라인에서는 로그인·자료 조회·저장을 사용할 수 없습니다.</p>
+      <p id="offline-support" class="auth-message" role="status"></p>
+    </section>
+    <div class="notice">로그인과 서버의 현재 기기 등록 확인이 모두 필요합니다. 현재 기기 확인 연결이 없어 자료실은 잠겨 있습니다.</div>
     <section class="auth" aria-labelledby="auth-title">
       <h2 id="auth-title">로그인</h2>
       <form id="login-form" novalidate>
@@ -72,10 +88,24 @@
       </form>
       <p id="note-message" role="status"></p>
     </section>
-    <ul id="notes" aria-live="polite"><li>가상 자료를 불러오는 중입니다.</li></ul>
+    <ul id="notes" aria-live="polite"><li>기기 승인 확인 전입니다. 보호 자료를 표시하지 않습니다.</li></ul>
   </main>
   <script type="module">
+    import { setupPwa } from '/app-shell.mjs';
     const list = document.querySelector('#notes');
+    // No browser approval API exists in the supplied engine contract.
+    // Fail closed; installation, login and button clicks never change this value.
+    const deviceAccessConfirmed = false;
+    const approvalResult = document.querySelector('#device-approval-result');
+    const lockedMessage = '기기 승인이 확인되지 않았습니다. 보호 자료를 표시하지 않습니다.';
+    document.querySelector('#request-device-approval').onclick = () => {
+      approvalResult.textContent = navigator.onLine
+        ? '미전송: 운영 엔진의 승인 요청 API 계약이 없습니다. 승인 요청은 접수되지 않았고 자료실은 잠겨 있습니다.'
+        : '미전송: 오프라인입니다. 연결 후에도 승인 서버 연결이 필요합니다.';
+    };
+    document.querySelector('#refresh-device-approval').onclick = () => {
+      approvalResult.textContent = '확인 불가: 기기 상태 조회 API 계약이 없습니다. 승인·거부 결과를 추정하지 않으며 자료실은 잠겨 있습니다.';
+    };
 
     function showListMessage(text) {
       const item = document.createElement('li');
@@ -87,6 +117,8 @@
     let loadSequence = 0;
     async function loadNotes(signedIn) {
       const sequence = ++loadSequence;
+      if (!deviceAccessConfirmed) { showListMessage(lockedMessage); return; }
+      if (!navigator.onLine) { showListMessage('오프라인입니다. 연결 후 자료를 다시 확인하세요.'); return; }
       if (!signedIn) {
         showListMessage('로그인하면 자료를 볼 수 있습니다.');
         return;
@@ -157,7 +189,10 @@
     const noteMessage = document.querySelector('#note-message');
     let sessionUser;
     async function noteRequest(method, id, body) {
+      if (!deviceAccessConfirmed) throw new Error(lockedMessage);
+      if (!navigator.onLine) throw new Error('오프라인에서는 자료를 요청할 수 없습니다.');
       const session = await sessionRequest('GET');
+      if (!navigator.onLine) { updateSession(false); throw new Error('연결이 끊겼습니다. 자료를 다시 확인하세요.'); }
       if (!session.signedIn) { updateSession(false); throw new Error('로그인이 필요합니다.'); }
       const response = await fetch(`/api/learning-notes${id ? `/${encodeURIComponent(id)}` : ''}`, {
         method, cache: 'no-store',
@@ -206,6 +241,7 @@
       finally { button.disabled = false; }
     };
     async function sessionRequest(method, body) {
+      if (!navigator.onLine) throw new Error('오프라인에서는 로그인을 확인할 수 없습니다. 연결 후 다시 시도하세요.');
       const response = await fetch('/api/session', {
         method, credentials: 'same-origin', cache: 'no-store',
         headers: { 'Content-Type': 'application/json', 'X-Vault-Request': '1' },
@@ -216,6 +252,7 @@
       return result;
     }
     function updateSession(signedIn, userId) {
+      if (!navigator.onLine) signedIn = false;
       // Invalidate pending responses when the local session changes.
       ++loadSequence;
       const nextUser = signedIn ? userId : null;
@@ -223,9 +260,13 @@
         noteForm.reset(); document.querySelector('#lookup-form').reset(); noteMessage.textContent = '';
       }
       sessionUser = nextUser;
-      editor.hidden = !signedIn;
+      editor.hidden = !signedIn || !deviceAccessConfirmed;
+      if (!deviceAccessConfirmed) {
+        noteForm.reset(); document.querySelector('#lookup-form').reset(); noteMessage.textContent = '';
+        showListMessage(lockedMessage);
+      }
       render(signedIn);
-      if (!signedIn) showListMessage('로그인하면 자료를 볼 수 있습니다.');
+      if (!signedIn && deviceAccessConfirmed) showListMessage('로그인하면 자료를 볼 수 있습니다.');
     }
     let syncing;
     async function syncSession() {
@@ -260,6 +301,16 @@
       finally { logoutButton.disabled = false; }
     });
     window.addEventListener('focus', () => syncSession().catch(error => showMessage(error.message, 'error')));
+    setupPwa({
+      onOffline() {
+        updateSession(false);
+        noteForm.reset(); document.querySelector('#lookup-form').reset();
+        emailInput.value = ''; passwordInput.value = ''; noteMessage.textContent = '';
+        showListMessage('오프라인입니다. 연결 후 로그인과 자료를 다시 확인하세요.');
+        showMessage('자료 요청은 저장하거나 자동 재전송하지 않습니다.', 'error');
+      },
+      onOnline() { syncSession().catch(error => showMessage(error.message, 'error')); },
+    });
     try { await syncSession(); }
     catch (error) { updateSession(false); showMessage(error.message, 'error'); }
   </script>

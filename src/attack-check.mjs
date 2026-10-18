@@ -343,10 +343,11 @@ export async function runAttackChecks(config) {
           if (attackId === 'operations_anonymous') {
             matches = response.status === 401 && value?.error === 'LOGIN_REQUIRED' && Object.keys(value).length === 1;
           } else {
-            const { execFileSync } = await import('node:child_process');
-            const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true }).trim();
-            matches = value?.commit === commit && value?.step === config.step
+            const metadataMatches = value?.step === config.step
               && value?.repoUrl?.toLowerCase() === config.repoUrl.toLowerCase();
+            attempts.push({ attackId, expected,
+              observed: `HTTP ${response.status} · 단계·저장소 일치=${metadataMatches} · 커밋 일치: not_run (미실행). 41종 통과 증거 아님.` });
+            continue;
           }
           attempts.push({ attackId, expected, observed: `HTTP ${response.status} · 기대 일치=${matches}. 41종 통과 증거 아님.` });
         } catch { attempts.push({ attackId, expected, observed: '요청 실패: 응답 확인 불가' }); }

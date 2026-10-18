@@ -12,7 +12,7 @@ export async function runAttackChecks(config) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
-  if ([3, 4, 5, 6, 7, 8, 9, 10, 11].includes(config.step)) {
+  if ([3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(config.step)) {
     const attempts = [];
     const cases = [
       ['anonymous_list', 'GET', '/api/learning-notes'],
@@ -318,6 +318,30 @@ export async function runAttackChecks(config) {
         attempts.push({ attackId: 'deployment_identity', expected: '배포 단계·커밋·저장소가 제출 대상과 일치',
           observed: `HTTP ${response.status} · 제출 대상 일치=${matches}. 기기 승인 연동 완료를 뜻하지 않음.` });
       } catch { attempts.push({ attackId: 'deployment_identity', expected: '배포 단계·커밋·저장소 확인', observed: '요청 실패: 배포 대상 확인 불가' }); }
+    }
+    if (config.step === 12) {
+      for (const [attackId, path, expected] of [
+        ['operations_anonymous', '/api/operations-summary', '401 LOGIN_REQUIRED, 요약·시험 기록 없음'],
+        ['deployment_identity', '/aleph.json', '배포 커밋·단계·저장소가 제출 대상과 일치'],
+      ]) {
+        try {
+          const response = await fetch(new URL(path, app), { headers: { 'X-Vault-Request': '1' },
+            cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000) });
+          const value = await response.json().catch(() => null);
+          let matches;
+          if (attackId === 'operations_anonymous') {
+            matches = response.status === 401 && value?.error === 'LOGIN_REQUIRED' && Object.keys(value).length === 1;
+          } else {
+            const { execFileSync } = await import('node:child_process');
+            const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true }).trim();
+            matches = value?.commit === commit && value?.step === config.step
+              && value?.repoUrl?.toLowerCase() === config.repoUrl.toLowerCase();
+          }
+          attempts.push({ attackId, expected, observed: `HTTP ${response.status} · 기대 일치=${matches}. 41종 통과 증거 아님.` });
+        } catch { attempts.push({ attackId, expected, observed: '요청 실패: 응답 확인 불가' }); }
+      }
+      attempts.push({ attackId: 'live_41_verification', expected: '정상 허용·금지 거부를 실제 응답·요청 ID·시각·서버 기록으로 대조',
+        observed: '41종 실제 시험은 미실행. 실측 수집·운영 사건·회수·복구 기록 API 미연결。모의 시험을 실측 통과로 계산하지 않음.' });
     }
     return attempts;
   }

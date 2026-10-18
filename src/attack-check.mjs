@@ -30,16 +30,8 @@ export async function runAttackChecks(config) {
       ['deployment_identity', '제출 대상과 배포 커밋·단계·저장소 일치'],
       ['live_41_verification', '정상 허용·금지 거부의 실제 응답과 서버 기록 대조'],
     ].map(([attackId, expected]) => ({ attackId, expected, observed: 'not_run' }));
-    // This is only a public-file read, not an authenticated/attack/commit-match check.
-    try {
-      const response = await fetch(new URL('/data.json', app), { method: 'GET', redirect: 'error' });
-      const value = await response.json().catch(() => null);
-      const empty = Array.isArray(value?.notes) && value.notes.length === 0;
-      attempts.push({ attackId: 'public_static_notes', expected: '공개 JSON의 notes 빈 배열',
-        observed: `HTTP ${response.status} · notes 빈 배열=${empty}. 공개 파일 GET만 확인.` });
-    } catch {
-      attempts.push({ attackId: 'public_static_notes', expected: '공개 JSON의 notes 빈 배열', observed: 'not_run' });
-    }
+    // No judge request receipt exists for this check either.
+    attempts.push({ attackId: 'public_static_notes', expected: '공개 JSON의 notes 빈 배열', observed: 'not_run' });
     return attempts;
   }
   if ([3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(config.step)) {

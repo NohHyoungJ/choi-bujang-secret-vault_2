@@ -3,6 +3,15 @@
   "framework": null,
   "buildCommand": "npm run build",
   "outputDirectory": "public",
+  "rewrites": [
+    { "source": "/api/learning-notes/:id", "destination": "/api/learning-notes" },
+    { "source": "/api/instructor-notices", "destination": "/api/learning-notes" },
+    { "source": "/api/instructor-notices/:id", "destination": "/api/learning-notes" },
+    { "source": "/api/instructor-materials", "destination": "/api/learning-notes" },
+    { "source": "/api/instructor-materials/:id", "destination": "/api/learning-notes" },
+    { "source": "/api/admin/instructor-notices", "destination": "/api/learning-notes" },
+    { "source": "/api/admin/instructor-notices/:id", "destination": "/api/learning-notes" }
+  ],
 
   "headers" : [
     {

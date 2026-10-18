@@ -32,6 +32,9 @@
 
 ## 설치와 실행 순서
 
+Vercel Hobby의 함수 수 제한을 맞추기 위해 자료 API의 7개 별칭 파일을 vercel.json의 rewrite로
+통합했습니다. 서버 함수는 7개이며 기존 자료 URL은 learning-notes.js의 원래 경로별 권한 검사를 사용합니다.
+
 1. Node.js 22 이상·npm·Git을 준비합니다. 기존 폴더를 덮어쓰지 않고 별도 폴더에 저장소를 받습니다.
    GitHub 저장소: https://github.com/NohHyoungJ/choi-bujang-secret-vault_2
    현재 기준을 재현할 때는 그 새 폴더에서 다음 순서를 사용합니다.

@@ -23,12 +23,15 @@ export async function runAttackChecks(config) {
       ['invalid_token', 'GET', '/api/learning-notes'],
     ];
     for (const [attackId, method, path] of cases) {
+      if (!['GET', 'HEAD'].includes(method)) {
+        attempts.push({ attackId, expected: '401 LOGIN_REQUIRED, 자료 없음', observed: 'not_run' });
+        continue;
+      }
       try {
         const result = await fetch(new URL(`${path}?userId=untrusted&role=admin`, app), {
-          method, redirect: 'error', signal: AbortSignal.timeout(10000),
+          method, redirect: 'error',
           headers: { ...(attackId === 'invalid_token' ? { Authorization: 'Bearer invalid' } : {}),
             'Content-Type': 'application/json' },
-          ...(['POST', 'PUT'].includes(method) ? { body: JSON.stringify({ title: 'Synthetic check', body: 'Synthetic check' }) } : {}),
         });
         const data = await result.json().catch(() => null);
         const rejected = result.status === 401 && data?.error === 'LOGIN_REQUIRED'
@@ -39,7 +42,7 @@ export async function runAttackChecks(config) {
         attempts.push({ attackId, expected: '401 LOGIN_REQUIRED, 자료 없음', observed: '요청 실패: 응답 확인 불가' });
       }
     }
-    const staticData = await fetch(new URL('/data.json', app), { redirect: 'error', signal: AbortSignal.timeout(10000) });
+    const staticData = await fetch(new URL('/data.json', app), { redirect: 'error' });
     const data = await staticData.json().catch(() => null);
     attempts.push({ attackId: 'public_static_notes', expected: '공개 가상 메모는 정적 JSON에서 제외, notes 빈 배열',
       observed: `HTTP ${staticData.status} · ${Array.isArray(data?.notes) && data.notes.length === 0 ? '빈 메모 배열 확인' : '빈 메모 배열 확인 실패'}` });
@@ -57,7 +60,7 @@ export async function runAttackChecks(config) {
         throw new Error('originalApiUrl은 쿼리 없는 원본 HTTPS 자료 경로여야 합니다.');
       }
       try {
-        const response = await fetch(original, { redirect: 'error', signal: AbortSignal.timeout(10000) });
+        const response = await fetch(original, { redirect: 'error' });
         attempts.push({ attackId: 'original_without_credentials', expected: '인증 정보 없는 원본 API 요청 거부',
           observed: `HTTP ${response.status} · ${[401, 403].includes(response.status) ? '거부 응답 확인' : '예상한 거부 상태 아님'}. 이 요청은 DB 역할 권한 시험이 아님.` });
         await response.body?.cancel();
@@ -123,9 +126,13 @@ export async function runAttackChecks(config) {
         ['anonymous_instructor_materials', 'GET', '/api/instructor-materials', 401],
         ['direct_notice_write', 'POST', '/api/instructor-notices', 405],
       ]) {
+        if (!['GET', 'HEAD'].includes(method)) {
+          attempts.push({ attackId, expected: `직접 API 요청 HTTP ${expectedStatus}`, observed: 'not_run' });
+          continue;
+        }
         try {
           const response = await fetch(new URL(path, app), {
-            method, redirect: 'error', signal: AbortSignal.timeout(10000),
+            method, redirect: 'error',
           });
           attempts.push({ attackId, expected: `직접 API 요청 HTTP ${expectedStatus}, 자료 반환 없음`,
             observed: `HTTP ${response.status} · ${response.status === expectedStatus ? '거부 상태 확인' : '예상한 거부 상태와 다름'}. 인증된 강사 권한 시험 아님.` });
@@ -241,9 +248,13 @@ export async function runAttackChecks(config) {
         observed: `로컬 가상 요청: ${normalResult.decision}/${normalResult.reasonCode}, ${deniedResult.decision}/${deniedResult.reasonCode}. 복구 뒤 실제 재검사 아님.` });
       for (const [attackId, method, expectedStatus] of [
         ['anonymous_restore_note', 'POST', 401], ['restore_note_wrong_method', 'GET', 405]]) {
+        if (!['GET', 'HEAD'].includes(method)) {
+          attempts.push({ attackId, expected: `복원 API HTTP ${expectedStatus}`, observed: 'not_run' });
+          continue;
+        }
         try {
           const response = await fetch(new URL(config.restoreRoute, app), {
-            method, redirect: 'error', signal: AbortSignal.timeout(10000),
+            method, redirect: 'error',
           });
           attempts.push({ attackId, expected: `복원 API HTTP ${expectedStatus}, 복원 실행 없음`,
             observed: `HTTP ${response.status} · ${response.status === expectedStatus ? '거부 상태 확인' : '예상한 거부 상태와 다름'}. 실제 B 복원 시험 아님.` });
@@ -256,7 +267,7 @@ export async function runAttackChecks(config) {
     if (config.step === 11) {
       const getPublic = async path => {
         const response = await fetch(new URL(path, app), {
-          redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(10000),
+          redirect: 'error', cache: 'no-store',
         });
         return { status: response.status, text: await response.text() };
       };
@@ -273,7 +284,7 @@ export async function runAttackChecks(config) {
       for (const path of ['/offline.html', '/sw.js', '/app-shell.mjs', '/icons/vault-192.png', '/icons/vault-512.png']) {
         try {
           const response = await fetch(new URL(path, app), {
-            redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(10000),
+            redirect: 'error', cache: 'no-store',
           });
           assets.push(`${path}:HTTP ${response.status}`);
           await response.body?.cancel();
@@ -326,7 +337,7 @@ export async function runAttackChecks(config) {
       ]) {
         try {
           const response = await fetch(new URL(path, app), { headers: { 'X-Vault-Request': '1' },
-            cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000) });
+            cache: 'no-store', redirect: 'error' });
           const value = await response.json().catch(() => null);
           let matches;
           if (attackId === 'operations_anonymous') {
@@ -347,7 +358,7 @@ export async function runAttackChecks(config) {
   }
   if (config.step !== 1) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   const response = await fetch(new URL('/data.json', app), {
-    redirect: 'error', signal: AbortSignal.timeout(10000),
+    redirect: 'error',
   });
   let visible = false;
   if (response.ok) {

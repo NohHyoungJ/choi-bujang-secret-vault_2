@@ -106,6 +106,10 @@
 
 ## 비밀값 없는 전달 범위
 
+격리 환경의 bundle 자기 점검은 공개 HTTPS의 GET·HEAD만 전송합니다. POST·PUT·DELETE 등
+쓰기 점검은 요청하지 않고 observed를 `not_run`으로 남깁니다. AbortSignal.timeout에 의존하지 않습니다.
+`node --test test/bundle-isolation.test.mjs`는 이 제한을 모의 시험하며 실제 심판 실행과 구분합니다.
+
 포장 대상은 검토한 학생 소스·공개 설정·잠금 파일·문서·안전한 가상 시험 코드입니다.
 비밀번호·토큰·개인키·서버 키·실명·메모 본문·복구 사본·환경 설정 파일·원문 HAR/로그는 전달하지 않습니다.
 node_modules·.vercel·DB 연결 임시 파일도 재배포 포장 대상에서 제외합니다. .gitignore만 믿지 말고

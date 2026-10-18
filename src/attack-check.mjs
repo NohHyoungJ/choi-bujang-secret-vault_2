@@ -12,6 +12,36 @@ export async function runAttackChecks(config) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
+  if (config.step === 12) {
+    // No judge request receipts are available for these attacks. Never reuse local outcomes.
+    const attempts = [
+      ['anonymous_list', '무로그인 목록 요청: 401, 자료 없음'],
+      ['anonymous_create', '무로그인 추가 요청: 401, 생성 없음'],
+      ['anonymous_read', '무로그인 개별 조회: 401, 자료 없음'],
+      ['anonymous_update', '무로그인 수정: 401, 변경 없음'],
+      ['anonymous_delete', '무로그인 삭제: 401, 변경 없음'],
+      ['invalid_token', '잘못된 토큰: 401, 자료 없음'],
+      ['authenticated_crud', '승인된 본인 CRUD 성공, 삭제 후 404'],
+      ['cross_owner_access', '승인된 타인 조회·수정·삭제 404, 소유자 변경 400'],
+      ['database_rls', '사용자 역할 권한 검사'],
+      ['original_without_credentials', '원본 무인증 요청 거부'],
+      ['original_authenticated_access', '사용자 역할의 원본 직접 요청 거부'],
+      ['operations_anonymous', '무로그인 요약 요청: 401, 자료 없음'],
+      ['deployment_identity', '제출 대상과 배포 커밋·단계·저장소 일치'],
+      ['live_41_verification', '정상 허용·금지 거부의 실제 응답과 서버 기록 대조'],
+    ].map(([attackId, expected]) => ({ attackId, expected, observed: 'not_run' }));
+    // This is only a public-file read, not an authenticated/attack/commit-match check.
+    try {
+      const response = await fetch(new URL('/data.json', app), { method: 'GET', redirect: 'error' });
+      const value = await response.json().catch(() => null);
+      const empty = Array.isArray(value?.notes) && value.notes.length === 0;
+      attempts.push({ attackId: 'public_static_notes', expected: '공개 JSON의 notes 빈 배열',
+        observed: `HTTP ${response.status} · notes 빈 배열=${empty}. 공개 파일 GET만 확인.` });
+    } catch {
+      attempts.push({ attackId: 'public_static_notes', expected: '공개 JSON의 notes 빈 배열', observed: 'not_run' });
+    }
+    return attempts;
+  }
   if ([3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(config.step)) {
     const attempts = [];
     const cases = [
